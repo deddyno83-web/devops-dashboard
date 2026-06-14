@@ -1,0 +1,78 @@
+@import 'tailwindcss';
+
+/* Design tokens — shadcn-style neutral palette, light + dark. */
+@theme {
+  --color-bg: oklch(0.99 0 0);
+  --color-surface: oklch(1 0 0);
+  --color-surface-2: oklch(0.97 0.002 250);
+  --color-border: oklch(0.92 0.004 250);
+  --color-fg: oklch(0.21 0.01 250);
+  --color-muted: oklch(0.55 0.01 250);
+  --color-primary: oklch(0.55 0.18 264);
+  --color-primary-fg: oklch(0.99 0 0);
+  --color-accent: oklch(0.96 0.02 264);
+  --color-success: oklch(0.62 0.15 150);
+  --color-warning: oklch(0.7 0.15 70);
+  --color-danger: oklch(0.6 0.2 25);
+
+  --radius: 0.7rem;
+}
+
+.dark {
+  --color-bg: oklch(0.18 0.01 260);
+  --color-surface: oklch(0.22 0.012 260);
+  --color-surface-2: oklch(0.26 0.012 260);
+  --color-border: oklch(0.3 0.012 260);
+  --color-fg: oklch(0.95 0.005 260);
+  --color-muted: oklch(0.65 0.01 260);
+  --color-primary: oklch(0.68 0.16 264);
+  --color-primary-fg: oklch(0.18 0.01 260);
+  --color-accent: oklch(0.3 0.03 264);
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 999px;
+}
+
+@media print {
+  [data-noprint] {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+    color: #000;
+  }
+  .report-print {
+    border: none !important;
+    box-shadow: none !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+  }
+  main {
+    overflow: visible !important;
+  }
+}
