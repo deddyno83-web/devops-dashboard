@@ -18,6 +18,7 @@ import {
 } from '../components/ui'
 import { IconPlus, IconTrash } from '../components/icons'
 import { uid, nowISO, ageInDays, cn } from '../lib/utils'
+import { GuideButton } from '../components/Guide'
 
 const PRIORITY_META: Record<Priority, { label: string; color: any }> = {
   high: { label: 'Alta', color: 'danger' },
@@ -107,6 +108,7 @@ export default function KanbanView() {
         subtitle="Le tue attività da manager: hiring, vendor, escalation, decisioni, architettura."
         actions={
           <>
+            <GuideButton section="kanban" />
             <Badge color={wip > 3 ? 'danger' : 'neutral'}>WIP in corso: {wip}</Badge>
             <Button variant="primary" onClick={() => openNew()}>
               <IconPlus /> Nuova card

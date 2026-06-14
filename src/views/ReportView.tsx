@@ -1,6 +1,7 @@
 import { useStore } from '../store'
 import { Button } from '../components/ui'
 import { IconPrint } from '../components/icons'
+import { GuideButton } from '../components/Guide'
 import {
   todayISO,
   fmtDate,
@@ -49,9 +50,12 @@ export default function ReportView() {
             PDF» come stampante.
           </p>
         </div>
-        <Button variant="primary" onClick={() => window.print()}>
-          <IconPrint width={16} height={16} /> Stampa / Salva PDF
-        </Button>
+        <div className="flex items-center gap-2">
+          <GuideButton section="report" />
+          <Button variant="primary" onClick={() => window.print()}>
+            <IconPrint width={16} height={16} /> Stampa / Salva PDF
+          </Button>
+        </div>
       </div>
 
       <div className="report-print mx-auto max-w-3xl rounded-[var(--radius)] border bg-[var(--color-surface)] p-8">

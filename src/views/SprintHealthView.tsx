@@ -24,6 +24,7 @@ import {
 } from '../components/ui'
 import { IconPlus, IconTrash, IconLayers, IconActivity } from '../components/icons'
 import { uid, nowISO, todayISO, fmtDate, mondayOf, weekLabel } from '../lib/utils'
+import { GuideButton } from '../components/Guide'
 
 export default function SprintHealthView() {
   const [tab, setTab] = useState<'sprint' | 'dora'>('sprint')
@@ -34,6 +35,7 @@ export default function SprintHealthView() {
       <PageHeader
         title="Sprint & Salute"
         subtitle="Obiettivi e retro di sprint/train, rischi che ti porti dietro, e salute del team (DORA)."
+        actions={<GuideButton section="sprint" />}
       />
       <div className="mb-4 inline-flex rounded-[calc(var(--radius)-0.2rem)] border bg-[var(--color-surface-2)]/50 p-1 text-sm">
         <TabBtn active={tab === 'sprint'} onClick={() => setTab('sprint')}>

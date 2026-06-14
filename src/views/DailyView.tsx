@@ -11,6 +11,7 @@ import {
 } from '../components/icons'
 import { todayISO, uid, nowISO, fmtDate, relativeDays, daysFromToday } from '../lib/utils'
 import { PageHeader } from '../components/ui'
+import { GuideButton } from '../components/Guide'
 
 export default function DailyView() {
   const { data, update } = useStore()
@@ -100,6 +101,7 @@ export default function DailyView() {
       <PageHeader
         title="Oggi"
         subtitle={dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1)}
+        actions={<GuideButton section="daily" />}
       />
 
       <div className="grid gap-5 lg:grid-cols-3">

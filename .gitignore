@@ -2,3 +2,7 @@ node_modules/
 dist/
 *.local
 .DS_Store
+
+# Personal dashboard data — must NEVER be committed (least of all to a public repo)
+dashboard.json
+backups/

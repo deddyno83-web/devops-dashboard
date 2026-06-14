@@ -14,6 +14,7 @@ import {
 } from '../components/ui'
 import { IconPlus, IconTrash, IconUsers, IconCalendar } from '../components/icons'
 import SkillMatrix from './SkillMatrix'
+import { GuideButton } from '../components/Guide'
 import {
   uid,
   nowISO,
@@ -65,11 +66,14 @@ export default function TeamView() {
           data.people.length === 1 ? 'persona' : 'persone'
         } · scheda, 1:1, skill, obiettivi`}
         actions={
-          tab === 'cards' && (
-            <Button variant="primary" onClick={addPerson}>
-              <IconPlus /> Aggiungi persona
-            </Button>
-          )
+          <>
+            <GuideButton section="team" />
+            {tab === 'cards' && (
+              <Button variant="primary" onClick={addPerson}>
+                <IconPlus /> Aggiungi persona
+              </Button>
+            )}
+          </>
         }
       />
 

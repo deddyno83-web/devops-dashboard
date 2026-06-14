@@ -20,6 +20,7 @@ import {
 } from '../components/ui'
 import { IconPlus, IconTrash, IconFile, IconCheck } from '../components/icons'
 import { uid, nowISO, todayISO, fmtDate, relativeDays, daysFromToday } from '../lib/utils'
+import { GuideButton } from '../components/Guide'
 
 const DEC_STATUS: Record<DecisionStatus, { label: string; color: any }> = {
   open: { label: 'Aperta', color: 'warning' },
@@ -36,6 +37,7 @@ export default function DecisionsView() {
       <PageHeader
         title="Decisioni & Azioni"
         subtitle="Registra il «perché» delle decisioni e traccia gli action item con owner e scadenza."
+        actions={<GuideButton section="decisions" />}
       />
 
       <div className="mb-4 inline-flex rounded-[calc(var(--radius)-0.2rem)] border bg-[var(--color-surface-2)]/50 p-1 text-sm">
