@@ -17,7 +17,9 @@ export default function ReportView() {
   const { data } = useStore()
   const today = todayISO()
   const dailyTop = (data.dailyTop[today] ?? []).filter(Boolean)
-  const weekTop = data.weekTop.filter(Boolean)
+  const weekTop = (data.weeklyFocus[mondayOf()] ?? data.weekTop ?? []).filter(
+    Boolean,
+  )
 
   const colCounts = KANBAN_COLUMNS.map((c) => ({
     ...c,

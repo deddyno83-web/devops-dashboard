@@ -9,7 +9,7 @@ import {
 } from 'react'
 import type { AppData } from './types'
 import { defaultData } from './types'
-import { nowISO } from './lib/utils'
+import { nowISO, mondayOf } from './lib/utils'
 import {
   cacheData,
   loadCachedData,
@@ -194,6 +194,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 /** Fill in any fields missing from older / imported payloads. */
 function migrate(d: Partial<AppData>): AppData {
   const base = defaultData()
+  // One-time migration: fold the legacy single weekTop list into the current
+  // week of the new per-week weeklyFocus map.
+  const weeklyFocus = d.weeklyFocus ?? {}
+  if (
+    !d.weeklyFocus &&
+    Array.isArray(d.weekTop) &&
+    d.weekTop.some((x) => x && x.trim())
+  ) {
+    weeklyFocus[mondayOf()] = d.weekTop
+  }
   return {
     ...base,
     ...d,
@@ -203,6 +213,7 @@ function migrate(d: Partial<AppData>): AppData {
     actions: d.actions ?? base.actions,
     quickCapture: d.quickCapture ?? base.quickCapture,
     weekTop: d.weekTop ?? base.weekTop,
+    weeklyFocus,
     dailyTop: d.dailyTop ?? base.dailyTop,
     sprints: d.sprints ?? base.sprints,
     risks: d.risks ?? base.risks,

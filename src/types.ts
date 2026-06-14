@@ -131,7 +131,8 @@ export interface AppData {
   decisions: Decision[]
   actions: ActionItem[]
   quickCapture: QuickNote[]
-  weekTop: string[]
+  weekTop: string[] // legacy single list (migrated into weeklyFocus)
+  weeklyFocus: Record<string, string[]> // Monday ISO -> up to 3 strings
   dailyTop: Record<string, string[]> // 'YYYY-MM-DD' -> up to 3 strings
   sprints: Sprint[]
   risks: Risk[]
@@ -150,6 +151,7 @@ export function defaultData(): AppData {
     actions: [],
     quickCapture: [],
     weekTop: [],
+    weeklyFocus: {},
     dailyTop: {},
     sprints: [],
     risks: [],

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useStore } from '../store'
-import { Button, Card, Badge, EmptyState } from '../components/ui'
+import { Button, Card, Badge, EmptyState, Modal } from '../components/ui'
 import {
   IconPlus,
   IconCheck,
@@ -9,13 +9,23 @@ import {
   IconWarn,
   IconBoard,
 } from '../components/icons'
-import { todayISO, uid, nowISO, fmtDate, relativeDays, daysFromToday } from '../lib/utils'
+import {
+  todayISO,
+  uid,
+  nowISO,
+  fmtDate,
+  relativeDays,
+  daysFromToday,
+  mondayOf,
+  weekLabel,
+} from '../lib/utils'
 import { PageHeader } from '../components/ui'
 import { GuideButton } from '../components/Guide'
 
 export default function DailyView() {
   const { data, update } = useStore()
   const today = todayISO()
+  const thisWeek = mondayOf()
   const top = data.dailyTop[today] ?? ['', '', '']
   const [capture, setCapture] = useState('')
 
@@ -29,10 +39,10 @@ export default function DailyView() {
 
   function setWeek(i: number, value: string) {
     update((d) => {
-      const arr = [...d.weekTop]
+      const arr = [...(d.weeklyFocus[thisWeek] ?? ['', '', ''])]
       while (arr.length < 3) arr.push('')
       arr[i] = value
-      d.weekTop = arr
+      d.weeklyFocus[thisWeek] = arr
     })
   }
 
@@ -74,7 +84,8 @@ export default function DailyView() {
     })
   }
 
-  const week = [data.weekTop[0] ?? '', data.weekTop[1] ?? '', data.weekTop[2] ?? '']
+  const weekArr = data.weeklyFocus[thisWeek] ?? ['', '', '']
+  const week = [weekArr[0] ?? '', weekArr[1] ?? '', weekArr[2] ?? '']
   const openCapture = data.quickCapture.filter((n) => !n.done)
 
   // Daily overview signals
@@ -108,7 +119,15 @@ export default function DailyView() {
         {/* Focus columns */}
         <div className="space-y-5 lg:col-span-2">
           <Card className="p-5">
-            <h3 className="mb-3 text-sm font-semibold">Le 3 priorità di oggi</h3>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Le 3 priorità di oggi</h3>
+              <HistoryButton
+                title="Storico priorità giornaliere"
+                entries={data.dailyTop}
+                currentKey={today}
+                labelFor={(k) => fmtDate(k)}
+              />
+            </div>
             <div className="space-y-2">
               {[0, 1, 2].map((i) => (
                 <PriorityRow
@@ -187,7 +206,15 @@ export default function DailyView() {
         {/* Side rail */}
         <div className="space-y-5">
           <Card className="p-5">
-            <h3 className="mb-3 text-sm font-semibold">Focus della settimana</h3>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Focus della settimana</h3>
+              <HistoryButton
+                title="Storico focus settimanali"
+                entries={data.weeklyFocus}
+                currentKey={thisWeek}
+                labelFor={(k) => `Settimana del ${weekLabel(k)}`}
+              />
+            </div>
             <div className="space-y-2">
               {[0, 1, 2].map((i) => (
                 <PriorityRow
@@ -260,6 +287,70 @@ export default function DailyView() {
           </div>
         )}
     </div>
+  )
+}
+
+function HistoryButton({
+  title,
+  entries,
+  currentKey,
+  labelFor,
+}: {
+  title: string
+  entries: Record<string, string[]>
+  currentKey: string
+  labelFor: (key: string) => string
+}) {
+  const [open, setOpen] = useState(false)
+  const items = Object.entries(entries)
+    .filter(
+      ([k, v]) =>
+        k !== currentKey && Array.isArray(v) && v.some((x) => x && x.trim()),
+    )
+    .sort((a, b) => b[0].localeCompare(a[0]))
+
+  return (
+    <>
+      <Button size="sm" variant="ghost" onClick={() => setOpen(true)} title="Vedi lo storico">
+        <IconCalendar width={14} height={14} /> Storico
+      </Button>
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title={title}
+        footer={
+          <Button variant="primary" onClick={() => setOpen(false)}>
+            Chiudi
+          </Button>
+        }
+      >
+        {items.length === 0 ? (
+          <p className="py-2 text-center text-sm text-[var(--color-muted)]">
+            Ancora nessuno storico da mostrare.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {items.map(([k, v]) => (
+              <div
+                key={k}
+                className="rounded-[calc(var(--radius)-0.25rem)] border p-3"
+              >
+                <p className="mb-1.5 text-xs font-semibold text-[var(--color-muted)]">
+                  {labelFor(k)}
+                </p>
+                <ol className="list-decimal space-y-0.5 pl-5 text-sm">
+                  {v
+                    .filter((x) => x && x.trim())
+                    .map((x, i) => (
+                      <li key={i}>{x}</li>
+                    ))}
+                </ol>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
+    </>
   )
 }
 
