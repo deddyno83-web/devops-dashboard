@@ -44,6 +44,8 @@ export interface KanbanCard {
   tag?: string
   createdAt: string
   updatedAt: string
+  urgent?: boolean // Eisenhower axis
+  important?: boolean // Eisenhower axis
 }
 
 export type DecisionStatus = 'open' | 'decided' | 'revisit'
@@ -134,6 +136,7 @@ export interface AppData {
   weekTop: string[] // legacy single list (migrated into weeklyFocus)
   weeklyFocus: Record<string, string[]> // Monday ISO -> up to 3 strings
   dailyTop: Record<string, string[]> // 'YYYY-MM-DD' -> up to 3 strings
+  dailyDone: Record<string, boolean[]> // 'YYYY-MM-DD' -> completion per priority
   sprints: Sprint[]
   risks: Risk[]
   dora: DoraEntry[]
@@ -153,6 +156,7 @@ export function defaultData(): AppData {
     weekTop: [],
     weeklyFocus: {},
     dailyTop: {},
+    dailyDone: {},
     sprints: [],
     risks: [],
     dora: [],

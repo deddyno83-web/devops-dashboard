@@ -215,6 +215,7 @@ function migrate(d: Partial<AppData>): AppData {
     weekTop: d.weekTop ?? base.weekTop,
     weeklyFocus,
     dailyTop: d.dailyTop ?? base.dailyTop,
+    dailyDone: d.dailyDone ?? base.dailyDone,
     sprints: d.sprints ?? base.sprints,
     risks: d.risks ?? base.risks,
     dora: d.dora ?? base.dora,

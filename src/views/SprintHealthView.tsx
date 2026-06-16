@@ -96,6 +96,22 @@ function SprintTab() {
   const { data, update } = useStore()
   const [draft, setDraft] = useState<Partial<Sprint> | null>(null)
   const [editId, setEditId] = useState<string | null>(null)
+  const [createdFor, setCreatedFor] = useState<string | null>(null)
+
+  function retroToAction(sprint: Sprint) {
+    const t = sprint.retroImprove.trim()
+    if (!t) return
+    update((d) =>
+      d.actions.unshift({
+        id: uid(),
+        title: t,
+        status: 'todo',
+        createdAt: nowISO(),
+      }),
+    )
+    setCreatedFor(sprint.id)
+    setTimeout(() => setCreatedFor(null), 2500)
+  }
 
   function save() {
     if (!draft?.name?.trim()) return
@@ -206,6 +222,20 @@ function SprintTab() {
                           ▲ Migliorare:{' '}
                         </span>
                         {s.retroImprove}
+                        <div className="mt-1.5">
+                          {createdFor === s.id ? (
+                            <span className="font-medium text-[var(--color-success)]">
+                              ✓ Creato in Azioni
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => retroToAction(s)}
+                              className="font-medium text-[var(--color-primary)] hover:underline"
+                            >
+                              → Crea action item
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>

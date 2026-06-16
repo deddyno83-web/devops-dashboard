@@ -1,5 +1,80 @@
+import type { Priority } from '../types'
+
 export function cn(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ')
+}
+
+export interface ParsedCapture {
+  title: string
+  owner?: string
+  priority?: Priority
+  due?: string
+}
+
+/** Parse quick-capture text with inline tokens: @owner, !priorità, /scadenza. */
+export function parseCapture(text: string, people: string[] = []): ParsedCapture {
+  let working = ` ${text} `
+  let owner: string | undefined
+  let priority: Priority | undefined
+  let due: string | undefined
+
+  const pr = working.match(/!\s*(alta|high|media|med(?:ium)?|bassa|low)\b/i)
+  if (pr) {
+    const v = pr[1].toLowerCase()
+    priority =
+      v.startsWith('a') || v === 'high'
+        ? 'high'
+        : v.startsWith('b') || v === 'low'
+          ? 'low'
+          : 'med'
+    working = working.replace(pr[0], ' ')
+  }
+
+  const ow = working.match(/@([\p{L}][\p{L}'’-]*)/u)
+  if (ow) {
+    const token = ow[1].toLowerCase()
+    const match = people.find(
+      (p) =>
+        p.toLowerCase().startsWith(token) ||
+        p.toLowerCase().split(/\s+/).some((part) => part.startsWith(token)),
+    )
+    owner = match ?? ow[1]
+    working = working.replace(ow[0], ' ')
+  }
+
+  const du = working.match(/\/(\S+)/)
+  if (du) {
+    const parsed = parseDueToken(du[1])
+    if (parsed) {
+      due = parsed
+      working = working.replace(du[0], ' ')
+    }
+  }
+
+  return { title: working.replace(/\s+/g, ' ').trim(), owner, priority, due }
+}
+
+function parseDueToken(tok: string): string | undefined {
+  const t = tok.toLowerCase()
+  const today = new Date(todayISO() + 'T00:00:00')
+  const fmt = (d: Date) => {
+    const tz = d.getTimezoneOffset() * 60000
+    return new Date(d.getTime() - tz).toISOString().slice(0, 10)
+  }
+  if (t === 'oggi') return todayISO()
+  if (t === 'domani') return fmt(new Date(today.getTime() + 86400000))
+  if (t === 'dopodomani') return fmt(new Date(today.getTime() + 2 * 86400000))
+  const plus = t.match(/^\+(\d+)$/)
+  if (plus) return fmt(new Date(today.getTime() + parseInt(plus[1]) * 86400000))
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t
+  const days = ['dom', 'lun', 'mar', 'mer', 'gio', 'ven', 'sab']
+  const idx = days.findIndex((d) => t.startsWith(d))
+  if (idx >= 0) {
+    let delta = (idx - today.getDay() + 7) % 7
+    if (delta === 0) delta = 7
+    return fmt(new Date(today.getTime() + delta * 86400000))
+  }
+  return undefined
 }
 
 export function uid(): string {

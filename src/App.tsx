@@ -15,6 +15,7 @@ import {
   IconCheck,
   IconActivity,
   IconPrint,
+  IconSearch,
 } from './components/icons'
 import DailyView from './views/DailyView'
 import KanbanView from './views/KanbanView'
@@ -22,6 +23,7 @@ import TeamView from './views/TeamView'
 import DecisionsView from './views/DecisionsView'
 import SprintHealthView from './views/SprintHealthView'
 import ReportView from './views/ReportView'
+import { CommandPalette } from './components/CommandPalette'
 
 type Tab = 'daily' | 'kanban' | 'team' | 'sprint' | 'decisions' | 'report'
 
@@ -45,6 +47,19 @@ export default function App() {
 function Shell() {
   const { data, update } = useStore()
   const [tab, setTab] = useState<Tab>('daily')
+  const [paletteOpen, setPaletteOpen] = useState(false)
+
+  // Global Ctrl/Cmd+K to open the command palette
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   // Apply theme
   useEffect(() => {
@@ -86,6 +101,17 @@ function Shell() {
             <IconMoon />
           </button>
         </div>
+
+        <button
+          onClick={() => setPaletteOpen(true)}
+          className="mx-2 mb-1 hidden items-center gap-2 rounded-[calc(var(--radius)-0.2rem)] border px-3 py-2 text-sm text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] lg:flex"
+        >
+          <IconSearch width={15} height={15} />
+          <span>Cerca o crea…</span>
+          <kbd className="ml-auto rounded border px-1.5 py-0.5 text-[10px] font-medium">
+            Ctrl K
+          </kbd>
+        </button>
 
         <nav className="flex gap-1 overflow-x-auto px-2 pb-2 lg:flex-col lg:pb-0">
           {NAV.map((n) => {
@@ -133,6 +159,12 @@ function Shell() {
           <StoragePanel />
         </div>
       </main>
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onNavigate={(t) => setTab(t)}
+      />
     </div>
   )
 }

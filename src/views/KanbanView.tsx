@@ -16,7 +16,7 @@ import {
   Select,
   PageHeader,
 } from '../components/ui'
-import { IconPlus, IconTrash } from '../components/icons'
+import { IconPlus, IconTrash, IconBoard, IconGrid } from '../components/icons'
 import { uid, nowISO, ageInDays, cn } from '../lib/utils'
 import { GuideButton } from '../components/Guide'
 
@@ -40,6 +40,18 @@ export default function KanbanView() {
   const [draft, setDraft] = useState<Partial<KanbanCard> | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
   const [overCol, setOverCol] = useState<KanbanColumn | null>(null)
+  const [view, setView] = useState<'board' | 'matrix'>('board')
+
+  function setQuadrant(id: string, urgent: boolean, important: boolean) {
+    update((d) => {
+      const c = d.kanban.find((x) => x.id === id)
+      if (c) {
+        c.urgent = urgent
+        c.important = important
+        c.updatedAt = nowISO()
+      }
+    })
+  }
 
   function openNew(column: KanbanColumn = 'todo') {
     setEditing(null)
@@ -117,6 +129,32 @@ export default function KanbanView() {
         }
       />
 
+      <div className="mb-4 inline-flex rounded-[calc(var(--radius)-0.2rem)] border bg-[var(--color-surface-2)]/50 p-1 text-sm">
+        <button
+          onClick={() => setView('board')}
+          className={
+            'flex items-center gap-1.5 rounded-[calc(var(--radius)-0.35rem)] px-3 py-1.5 font-medium transition-colors ' +
+            (view === 'board'
+              ? 'bg-[var(--color-surface)] shadow-sm'
+              : 'text-[var(--color-muted)] hover:text-[var(--color-fg)]')
+          }
+        >
+          <IconBoard width={15} height={15} /> Flusso
+        </button>
+        <button
+          onClick={() => setView('matrix')}
+          className={
+            'flex items-center gap-1.5 rounded-[calc(var(--radius)-0.35rem)] px-3 py-1.5 font-medium transition-colors ' +
+            (view === 'matrix'
+              ? 'bg-[var(--color-surface)] shadow-sm'
+              : 'text-[var(--color-muted)] hover:text-[var(--color-fg)]')
+          }
+        >
+          <IconGrid width={15} height={15} /> Eisenhower
+        </button>
+      </div>
+
+      {view === 'board' && (
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {KANBAN_COLUMNS.map((col) => {
           const cards = data.kanban.filter((c) => c.column === col.key)
@@ -170,6 +208,15 @@ export default function KanbanView() {
           )
         })}
       </div>
+      )}
+
+      {view === 'matrix' && (
+        <EisenhowerMatrix
+          cards={data.kanban}
+          onSetQuadrant={setQuadrant}
+          onOpen={openEdit}
+        />
+      )}
 
       <Modal
         open={draft !== null}
@@ -290,6 +337,169 @@ function KanbanCardItem({
         <Badge color={pr.color}>{pr.label}</Badge>
         {card.tag && <Badge color="primary">{card.tag}</Badge>}
         {stale && <Badge color="danger">fermo da {age}g</Badge>}
+      </div>
+    </div>
+  )
+}
+
+const QUADRANTS = [
+  {
+    key: 'do',
+    title: 'Fai subito',
+    sub: 'Importante · Urgente',
+    urgent: true,
+    important: true,
+    color: 'var(--color-danger)',
+  },
+  {
+    key: 'plan',
+    title: 'Pianifica',
+    sub: 'Importante · Non urgente',
+    urgent: false,
+    important: true,
+    color: 'var(--color-success)',
+  },
+  {
+    key: 'delegate',
+    title: 'Delega',
+    sub: 'Non importante · Urgente',
+    urgent: true,
+    important: false,
+    color: 'var(--color-warning)',
+  },
+  {
+    key: 'drop',
+    title: 'Elimina / Rimanda',
+    sub: 'Non importante · Non urgente',
+    urgent: false,
+    important: false,
+    color: 'var(--color-muted)',
+  },
+] as const
+
+function EisenhowerMatrix({
+  cards,
+  onSetQuadrant,
+  onOpen,
+}: {
+  cards: KanbanCard[]
+  onSetQuadrant: (id: string, urgent: boolean, important: boolean) => void
+  onOpen: (card: KanbanCard) => void
+}) {
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [over, setOver] = useState<string | null>(null)
+
+  const active = cards.filter((c) => c.column !== 'done')
+  const unclassified = active.filter(
+    (c) => c.urgent === undefined || c.important === undefined,
+  )
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        {QUADRANTS.map((q) => {
+          const items = active.filter(
+            (c) => c.urgent === q.urgent && c.important === q.important,
+          )
+          return (
+            <div
+              key={q.key}
+              onDragOver={(e) => {
+                e.preventDefault()
+                setOver(q.key)
+              }}
+              onDragLeave={() => setOver((o) => (o === q.key ? null : o))}
+              onDrop={() => {
+                if (dragId) onSetQuadrant(dragId, q.urgent, q.important)
+                setDragId(null)
+                setOver(null)
+              }}
+              className={
+                'min-h-[140px] rounded-[var(--radius)] border p-3 transition-colors ' +
+                (over === q.key
+                  ? 'border-[var(--color-primary)] bg-[color-mix(in_oklch,var(--color-primary)_8%,transparent)]'
+                  : 'bg-[var(--color-surface-2)]/40')
+              }
+            >
+              <div className="mb-2 flex items-center gap-2">
+                <span
+                  className="h-2.5 w-2.5 rounded-full"
+                  style={{ background: q.color }}
+                />
+                <span className="text-sm font-semibold">{q.title}</span>
+                <span className="text-xs text-[var(--color-muted)]">{q.sub}</span>
+                <span className="ml-auto text-xs text-[var(--color-muted)]">
+                  {items.length}
+                </span>
+              </div>
+              <div className="space-y-2">
+                {items.map((c) => (
+                  <MatrixCard
+                    key={c.id}
+                    card={c}
+                    onOpen={() => onOpen(c)}
+                    onDragStart={() => setDragId(c.id)}
+                    onDragEnd={() => setDragId(null)}
+                  />
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {unclassified.length > 0 && (
+        <div className="rounded-[var(--radius)] border border-dashed p-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+            Da classificare — trascina in un quadrante
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {unclassified.map((c) => (
+              <MatrixCard
+                key={c.id}
+                card={c}
+                onOpen={() => onOpen(c)}
+                onDragStart={() => setDragId(c.id)}
+                onDragEnd={() => setDragId(null)}
+                inline
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MatrixCard({
+  card,
+  onOpen,
+  onDragStart,
+  onDragEnd,
+  inline,
+}: {
+  card: KanbanCard
+  onOpen: () => void
+  onDragStart: () => void
+  onDragEnd: () => void
+  inline?: boolean
+}) {
+  const pr = PRIORITY_META[card.priority]
+  return (
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onClick={onOpen}
+      className={
+        'cursor-pointer rounded-[calc(var(--radius)-0.2rem)] border bg-[var(--color-surface)] p-2 text-sm shadow-sm transition-shadow hover:shadow-md ' +
+        (inline ? 'max-w-[220px]' : '')
+      }
+    >
+      <p className="font-medium leading-snug">{card.title}</p>
+      <div className="mt-1 flex items-center gap-1.5">
+        <Badge color={pr.color}>{pr.label}</Badge>
+        {card.tag && <Badge color="primary">{card.tag}</Badge>}
       </div>
     </div>
   )

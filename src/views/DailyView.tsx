@@ -18,6 +18,7 @@ import {
   daysFromToday,
   mondayOf,
   weekLabel,
+  parseCapture,
 } from '../lib/utils'
 import { PageHeader } from '../components/ui'
 import { GuideButton } from '../components/Guide'
@@ -27,12 +28,44 @@ export default function DailyView() {
   const today = todayISO()
   const thisWeek = mondayOf()
   const top = data.dailyTop[today] ?? ['', '', '']
+  const doneArr = data.dailyDone[today] ?? [false, false, false]
   const [capture, setCapture] = useState('')
+  const peopleNames = data.people.map((p) => p.name)
 
   function setTop(i: number, value: string) {
     update((d) => {
       const arr = [...(d.dailyTop[today] ?? ['', '', ''])]
       arr[i] = value
+      d.dailyTop[today] = arr
+    })
+  }
+
+  function toggleTopDone(i: number) {
+    update((d) => {
+      const arr = [...(d.dailyDone[today] ?? [false, false, false])]
+      arr[i] = !arr[i]
+      d.dailyDone[today] = arr
+    })
+  }
+
+  // Carry-over: most recent past day with priorities still open
+  const prevKey = Object.keys(data.dailyTop)
+    .filter((k) => k < today && (data.dailyTop[k] ?? []).some((x) => x && x.trim()))
+    .sort()
+    .pop()
+  const carryItems = prevKey
+    ? (data.dailyTop[prevKey] ?? [])
+        .map((t, i) => ({ t, done: (data.dailyDone[prevKey] ?? [])[i] }))
+        .filter((x) => x.t && x.t.trim() && !x.done)
+        .map((x) => x.t)
+    : []
+  const todayEmpty = !top.some((x) => x && x.trim())
+  const showCarry = todayEmpty && carryItems.length > 0
+
+  function applyCarry() {
+    update((d) => {
+      const arr = ['', '', '']
+      carryItems.slice(0, 3).forEach((t, i) => (arr[i] = t))
       d.dailyTop[today] = arr
     })
   }
@@ -72,13 +105,32 @@ export default function DailyView() {
     update((d) => {
       const n = d.quickCapture.find((x) => x.id === id)
       if (!n) return
+      const p = parseCapture(n.text, d.people.map((x) => x.name))
       d.kanban.unshift({
         id: uid(),
-        title: n.text,
+        title: p.title || n.text,
         column: 'todo',
-        priority: 'med',
+        priority: p.priority ?? 'med',
+        tag: p.owner,
         createdAt: nowISO(),
         updatedAt: nowISO(),
+      })
+      d.quickCapture = d.quickCapture.filter((x) => x.id !== id)
+    })
+  }
+
+  function promoteToAction(id: string) {
+    update((d) => {
+      const n = d.quickCapture.find((x) => x.id === id)
+      if (!n) return
+      const p = parseCapture(n.text, d.people.map((x) => x.name))
+      d.actions.unshift({
+        id: uid(),
+        title: p.title || n.text,
+        owner: p.owner,
+        due: p.due,
+        status: 'todo',
+        createdAt: nowISO(),
       })
       d.quickCapture = d.quickCapture.filter((x) => x.id !== id)
     })
@@ -118,6 +170,19 @@ export default function DailyView() {
       <div className="grid gap-5 lg:grid-cols-3">
         {/* Focus columns */}
         <div className="space-y-5 lg:col-span-2">
+          {showCarry && (
+            <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius)] border border-dashed bg-[color-mix(in_oklch,var(--color-warning)_10%,transparent)] px-4 py-2.5 text-sm">
+              <IconWarn width={16} height={16} className="text-[var(--color-warning)]" />
+              <span>
+                Hai <strong>{carryItems.length}</strong>{' '}
+                {carryItems.length === 1 ? 'priorità non chiusa' : 'priorità non chiuse'} da{' '}
+                {fmtDate(prevKey)}.
+              </span>
+              <Button size="sm" variant="primary" className="ml-auto" onClick={applyCarry}>
+                Riporta a oggi
+              </Button>
+            </div>
+          )}
           <Card className="p-5">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-sm font-semibold">Le 3 priorità di oggi</h3>
@@ -135,6 +200,8 @@ export default function DailyView() {
                   index={i}
                   value={top[i] ?? ''}
                   onChange={(v) => setTop(i, v)}
+                  done={doneArr[i]}
+                  onToggleDone={() => toggleTopDone(i)}
                 />
               ))}
             </div>
@@ -152,13 +219,44 @@ export default function DailyView() {
                 value={capture}
                 onChange={(e) => setCapture(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && addCapture()}
-                placeholder="Un'idea, un follow-up, una cosa da non scordare…"
+                placeholder="Es. «Sollecitare vendor @Luca !alta /ven»"
                 className="h-9 flex-1 rounded-[calc(var(--radius)-0.25rem)] border bg-[var(--color-bg)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-primary)]/40"
               />
               <Button variant="primary" onClick={addCapture}>
                 <IconPlus /> Aggiungi
               </Button>
             </div>
+            {(() => {
+              const cap = capture.trim()
+                ? parseCapture(capture, peopleNames)
+                : null
+              if (!cap || (!cap.owner && !cap.priority && !cap.due)) return null
+              return (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-[var(--color-muted)]">
+                  <span>Riconosciuto:</span>
+                  {cap.owner && <Badge color="primary">owner: {cap.owner}</Badge>}
+                  {cap.priority && (
+                    <Badge
+                      color={
+                        cap.priority === 'high'
+                          ? 'danger'
+                          : cap.priority === 'low'
+                            ? 'neutral'
+                            : 'warning'
+                      }
+                    >
+                      priorità:{' '}
+                      {cap.priority === 'high'
+                        ? 'alta'
+                        : cap.priority === 'low'
+                          ? 'bassa'
+                          : 'media'}
+                    </Badge>
+                  )}
+                  {cap.due && <Badge color="success">scad.: {fmtDate(cap.due)}</Badge>}
+                </div>
+              )
+            })()}
 
             <div className="mt-3 space-y-1.5">
               {openCapture.length === 0 && (
@@ -187,6 +285,14 @@ export default function DailyView() {
                       title="Sposta nel Kanban"
                     >
                       <IconBoard width={14} height={14} /> Kanban
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => promoteToAction(n.id)}
+                      title="Crea action item"
+                    >
+                      <IconCheck width={14} height={14} /> Azione
                     </Button>
                     <Button
                       size="icon"
@@ -359,29 +465,45 @@ function PriorityRow({
   value,
   onChange,
   subtle,
+  done,
+  onToggleDone,
 }: {
   index: number
   value: string
   onChange: (v: string) => void
   subtle?: boolean
+  done?: boolean
+  onToggleDone?: () => void
 }) {
+  const badgeClass =
+    'grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-semibold transition-colors ' +
+    (done
+      ? 'bg-[var(--color-success)] text-white'
+      : subtle
+        ? 'bg-[var(--color-surface-2)] text-[var(--color-muted)]'
+        : 'bg-[color-mix(in_oklch,var(--color-primary)_15%,transparent)] text-[var(--color-primary)]')
+
   return (
     <div className="flex items-center gap-3">
-      <span
-        className={
-          'grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-semibold ' +
-          (subtle
-            ? 'bg-[var(--color-surface-2)] text-[var(--color-muted)]'
-            : 'bg-[color-mix(in_oklch,var(--color-primary)_15%,transparent)] text-[var(--color-primary)]')
-        }
-      >
-        {index + 1}
-      </span>
+      {onToggleDone ? (
+        <button
+          onClick={onToggleDone}
+          className={badgeClass}
+          title={done ? 'Segna come da fare' : 'Segna come fatta'}
+        >
+          {done ? <IconCheck width={14} height={14} /> : index + 1}
+        </button>
+      ) : (
+        <span className={badgeClass}>{index + 1}</span>
+      )}
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={index === 0 ? 'La cosa più importante…' : '…'}
-        className="h-9 flex-1 border-b bg-transparent text-sm outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)]"
+        className={
+          'h-9 flex-1 border-b bg-transparent text-sm outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] ' +
+          (done ? 'text-[var(--color-muted)] line-through' : '')
+        }
       />
     </div>
   )
