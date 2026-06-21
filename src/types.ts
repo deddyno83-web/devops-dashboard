@@ -35,6 +35,12 @@ export const KANBAN_COLUMNS: { key: KanbanColumn; label: string }[] = [
 
 export type Priority = 'low' | 'med' | 'high'
 
+export interface ChecklistItem {
+  id: ID
+  text: string
+  done: boolean
+}
+
 export interface KanbanCard {
   id: ID
   title: string
@@ -42,6 +48,8 @@ export interface KanbanCard {
   column: KanbanColumn
   priority: Priority
   tag?: string
+  due?: string // ISO date
+  checklist?: ChecklistItem[]
   createdAt: string
   updatedAt: string
   urgent?: boolean // Eisenhower axis

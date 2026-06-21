@@ -22,6 +22,7 @@ import {
 } from '../lib/utils'
 import { PageHeader } from '../components/ui'
 import { GuideButton } from '../components/Guide'
+import { KANBAN_COLUMNS } from '../types'
 
 export default function DailyView() {
   const { data, update } = useStore()
@@ -67,6 +68,30 @@ export default function DailyView() {
       const arr = ['', '', '']
       carryItems.slice(0, 3).forEach((t, i) => (arr[i] = t))
       d.dailyTop[today] = arr
+    })
+  }
+
+  // Cockpit: what to work on now — in-progress + due/overdue cards
+  const focusCards = (() => {
+    const m = new Map<string, (typeof data.kanban)[number]>()
+    data.kanban
+      .filter((c) => c.column !== 'done')
+      .forEach((c) => {
+        const d = daysFromToday(c.due)
+        if (c.column === 'doing' || (d !== null && d <= 2)) m.set(c.id, c)
+      })
+    return [...m.values()].sort(
+      (a, b) => (daysFromToday(a.due) ?? 9999) - (daysFromToday(b.due) ?? 9999),
+    )
+  })()
+
+  function completeCard(id: string) {
+    update((d) => {
+      const c = d.kanban.find((x) => x.id === id)
+      if (c) {
+        c.column = 'done'
+        c.updatedAt = nowISO()
+      }
     })
   }
 
@@ -166,6 +191,55 @@ export default function DailyView() {
         subtitle={dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1)}
         actions={<GuideButton section="daily" />}
       />
+
+      {focusCards.length > 0 && (
+        <Card className="mb-5 p-5">
+          <div className="mb-3 flex items-center gap-2">
+            <IconBoard width={16} height={16} />
+            <h3 className="text-sm font-semibold">Su cosa lavoro adesso</h3>
+            <span className="text-xs text-[var(--color-muted)]">
+              in corso e in scadenza
+            </span>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {focusCards.map((c) => {
+              const d = daysFromToday(c.due)
+              const overdue = d !== null && d < 0
+              return (
+                <div
+                  key={c.id}
+                  className="flex items-center gap-2 rounded-[calc(var(--radius)-0.25rem)] border px-3 py-2"
+                >
+                  <button
+                    onClick={() => completeCard(c.id)}
+                    title="Segna come fatto"
+                    className="grid h-5 w-5 shrink-0 place-items-center rounded-md border text-transparent transition-colors hover:border-[var(--color-success)] hover:text-[var(--color-success)]"
+                  >
+                    <IconCheck width={13} height={13} />
+                  </button>
+                  <span className="flex-1 truncate text-sm">{c.title}</span>
+                  <Badge
+                    color={
+                      c.column === 'blocked'
+                        ? 'danger'
+                        : c.column === 'doing'
+                          ? 'primary'
+                          : 'neutral'
+                    }
+                  >
+                    {KANBAN_COLUMNS.find((k) => k.key === c.column)?.label}
+                  </Badge>
+                  {c.due && (
+                    <Badge color={overdue ? 'danger' : 'warning'}>
+                      {relativeDays(c.due)}
+                    </Badge>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </Card>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-3">
         {/* Focus columns */}
