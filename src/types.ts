@@ -132,6 +132,16 @@ export const DORA_METRICS: { key: keyof DoraEntry; label: string; hint: string }
   { key: 'changeFail', label: 'Change failure', hint: 'Rilasci che causano problemi' },
 ]
 
+/** End-of-day snapshot used to auto-generate the next daily standup. */
+export interface DailyLog {
+  date: string // YYYY-MM-DD the log covers
+  done: string[]
+  notes: string
+  carryOver: string[] // not finished -> goes to "today" at next standup
+  blockers: string[]
+  createdAt: string
+}
+
 export type ThemeMode = 'light' | 'dark' | 'system'
 
 export interface AppData {
@@ -149,6 +159,7 @@ export interface AppData {
   risks: Risk[]
   dora: DoraEntry[]
   skillList: string[]
+  dailyLogs: Record<string, DailyLog>
   settings: { theme: ThemeMode; managerName?: string }
   updatedAt: string
 }
@@ -169,6 +180,7 @@ export function defaultData(): AppData {
     risks: [],
     dora: [],
     skillList: [],
+    dailyLogs: {},
     settings: { theme: 'system' },
     updatedAt: new Date().toISOString(),
   }

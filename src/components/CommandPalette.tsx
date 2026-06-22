@@ -11,12 +11,21 @@ import {
   IconPrint,
   IconPlus,
   IconCheck,
+  IconSun,
 } from './icons'
 
-export type NavTab = 'daily' | 'kanban' | 'team' | 'sprint' | 'decisions' | 'report'
+export type NavTab =
+  | 'daily'
+  | 'standup'
+  | 'kanban'
+  | 'team'
+  | 'sprint'
+  | 'decisions'
+  | 'report'
 
 const NAV: { tab: NavTab; label: string; icon: typeof IconHome }[] = [
   { tab: 'daily', label: 'Oggi', icon: IconHome },
+  { tab: 'standup', label: 'Standup', icon: IconSun },
   { tab: 'kanban', label: 'Kanban', icon: IconBoard },
   { tab: 'team', label: 'Team & 1:1', icon: IconUsers },
   { tab: 'sprint', label: 'Sprint & Salute', icon: IconActivity },

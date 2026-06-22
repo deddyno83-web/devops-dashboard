@@ -4,6 +4,7 @@ import { IconHelp } from './icons'
 
 export type GuideKey =
   | 'daily'
+  | 'standup'
   | 'kanban'
   | 'team'
   | 'sprint'
@@ -46,6 +47,31 @@ const GUIDES: Record<GuideKey, Guide> = {
       },
     ],
     cadence: 'Ogni giorno — apertura al mattino, chiusura a fine giornata.',
+  },
+  standup: {
+    title: 'Standup',
+    intro:
+      'Il Daily Scrum: ispeziona i progressi verso l’obiettivo di sprint e adatta il piano. Qui chiudi la giornata e generi il daily da presentare il giorno dopo.',
+    sections: [
+      {
+        title: 'Come si usa',
+        items: [
+          'A fine giornata apri «Chiudi la giornata»: l’app pre-compila «Fatto oggi», «Non finite» e «Impedimenti» dai tuoi dati (card chiuse, priorità spuntate, card in corso/bloccate).',
+          'Correggi le liste e aggiungi le «Note del giorno», poi «Salva chiusura giornata».',
+          'A destra trovi lo standup pronto (Ieri · Oggi · Impedimenti) con l’obiettivo di sprint in testa: usa «Copia» per incollarlo in Teams/Slack o leggerlo al daily.',
+          'Il menù a tendina ti fa rivedere e copiare anche gli standup dei giorni passati.',
+        ],
+      },
+      {
+        title: 'Buone pratiche (agile)',
+        items: [
+          'Daily timeboxato a 15 minuti: parla di flusso e obiettivo di sprint, non di status burocratico.',
+          'Gli impedimenti emersi vanno risolti dopo il daily, non durante: annotali e portali a chi può sbloccarli.',
+          '«Non finite» che si ripetono per più giorni sono un segnale: la card è troppo grande o c’è un blocco nascosto.',
+        ],
+      },
+    ],
+    cadence: 'Chiusura a fine giornata · standup il mattino dopo, sempre alla stessa ora.',
   },
   kanban: {
     title: 'Kanban personale',

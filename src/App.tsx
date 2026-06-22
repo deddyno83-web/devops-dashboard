@@ -16,6 +16,7 @@ import {
   IconActivity,
   IconPrint,
   IconSearch,
+  IconSun,
 } from './components/icons'
 import DailyView from './views/DailyView'
 import KanbanView from './views/KanbanView'
@@ -23,12 +24,14 @@ import TeamView from './views/TeamView'
 import DecisionsView from './views/DecisionsView'
 import SprintHealthView from './views/SprintHealthView'
 import ReportView from './views/ReportView'
+import StandupView from './views/StandupView'
 import { CommandPalette } from './components/CommandPalette'
 
-type Tab = 'daily' | 'kanban' | 'team' | 'sprint' | 'decisions' | 'report'
+type Tab = 'daily' | 'standup' | 'kanban' | 'team' | 'sprint' | 'decisions' | 'report'
 
 const NAV: { key: Tab; label: string; icon: typeof IconHome }[] = [
   { key: 'daily', label: 'Oggi', icon: IconHome },
+  { key: 'standup', label: 'Standup', icon: IconSun },
   { key: 'kanban', label: 'Kanban', icon: IconBoard },
   { key: 'team', label: 'Team & 1:1', icon: IconUsers },
   { key: 'sprint', label: 'Sprint & Salute', icon: IconActivity },
@@ -149,6 +152,7 @@ function Shell() {
       <main className="flex-1 overflow-x-hidden">
         <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
           {tab === 'daily' && <DailyView />}
+          {tab === 'standup' && <StandupView />}
           {tab === 'kanban' && <KanbanView />}
           {tab === 'team' && <TeamView />}
           {tab === 'sprint' && <SprintHealthView />}
