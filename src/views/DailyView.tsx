@@ -30,6 +30,7 @@ export default function DailyView() {
   const thisWeek = mondayOf()
   const top = data.dailyTop[today] ?? ['', '', '']
   const doneArr = data.dailyDone[today] ?? [false, false, false]
+  const topNotes = data.dailyTopNotes[today] ?? ['', '', '']
   const [capture, setCapture] = useState('')
   const peopleNames = data.people.map((p) => p.name)
 
@@ -46,6 +47,14 @@ export default function DailyView() {
       const arr = [...(d.dailyDone[today] ?? [false, false, false])]
       arr[i] = !arr[i]
       d.dailyDone[today] = arr
+    })
+  }
+
+  function setTopNote(i: number, value: string) {
+    update((d) => {
+      const arr = [...(d.dailyTopNotes[today] ?? ['', '', ''])]
+      arr[i] = value
+      d.dailyTopNotes[today] = arr
     })
   }
 
@@ -101,6 +110,15 @@ export default function DailyView() {
       while (arr.length < 3) arr.push('')
       arr[i] = value
       d.weeklyFocus[thisWeek] = arr
+    })
+  }
+
+  function setWeekNote(i: number, value: string) {
+    update((d) => {
+      const arr = [...(d.weeklyFocusNotes[thisWeek] ?? ['', '', ''])]
+      while (arr.length < 3) arr.push('')
+      arr[i] = value
+      d.weeklyFocusNotes[thisWeek] = arr
     })
   }
 
@@ -163,6 +181,7 @@ export default function DailyView() {
 
   const weekArr = data.weeklyFocus[thisWeek] ?? ['', '', '']
   const week = [weekArr[0] ?? '', weekArr[1] ?? '', weekArr[2] ?? '']
+  const weekNotesArr = data.weeklyFocusNotes[thisWeek] ?? ['', '', '']
   const openCapture = data.quickCapture.filter((n) => !n.done)
 
   // Daily overview signals
@@ -276,6 +295,8 @@ export default function DailyView() {
                   onChange={(v) => setTop(i, v)}
                   done={doneArr[i]}
                   onToggleDone={() => toggleTopDone(i)}
+                  note={topNotes[i] ?? ''}
+                  onNoteChange={(v) => setTopNote(i, v)}
                 />
               ))}
             </div>
@@ -403,6 +424,8 @@ export default function DailyView() {
                   value={week[i]}
                   onChange={(v) => setWeek(i, v)}
                   subtle
+                  note={weekNotesArr[i] ?? ''}
+                  onNoteChange={(v) => setWeekNote(i, v)}
                 />
               ))}
             </div>
@@ -541,6 +564,8 @@ function PriorityRow({
   subtle,
   done,
   onToggleDone,
+  note,
+  onNoteChange,
 }: {
   index: number
   value: string
@@ -548,6 +573,8 @@ function PriorityRow({
   subtle?: boolean
   done?: boolean
   onToggleDone?: () => void
+  note?: string
+  onNoteChange?: (v: string) => void
 }) {
   const badgeClass =
     'grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-semibold transition-colors ' +
@@ -558,27 +585,37 @@ function PriorityRow({
         : 'bg-[color-mix(in_oklch,var(--color-primary)_15%,transparent)] text-[var(--color-primary)]')
 
   return (
-    <div className="flex items-center gap-3">
-      {onToggleDone ? (
-        <button
-          onClick={onToggleDone}
-          className={badgeClass}
-          title={done ? 'Segna come da fare' : 'Segna come fatta'}
-        >
-          {done ? <IconCheck width={14} height={14} /> : index + 1}
-        </button>
-      ) : (
-        <span className={badgeClass}>{index + 1}</span>
+    <div>
+      <div className="flex items-center gap-3">
+        {onToggleDone ? (
+          <button
+            onClick={onToggleDone}
+            className={badgeClass}
+            title={done ? 'Segna come da fare' : 'Segna come fatta'}
+          >
+            {done ? <IconCheck width={14} height={14} /> : index + 1}
+          </button>
+        ) : (
+          <span className={badgeClass}>{index + 1}</span>
+        )}
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={index === 0 ? 'La cosa più importante…' : '…'}
+          className={
+            'h-9 flex-1 border-b bg-transparent text-sm outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] ' +
+            (done ? 'text-[var(--color-muted)] line-through' : '')
+          }
+        />
+      </div>
+      {onNoteChange && (
+        <input
+          value={note ?? ''}
+          onChange={(e) => onNoteChange(e.target.value)}
+          placeholder="+ nota"
+          className="ml-9 w-[calc(100%-2.25rem)] bg-transparent py-0.5 text-xs text-[var(--color-muted)] outline-none placeholder:text-[var(--color-muted)]/50 focus:text-[var(--color-fg)]"
+        />
       )}
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={index === 0 ? 'La cosa più importante…' : '…'}
-        className={
-          'h-9 flex-1 border-b bg-transparent text-sm outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] ' +
-          (done ? 'text-[var(--color-muted)] line-through' : '')
-        }
-      />
     </div>
   )
 }
