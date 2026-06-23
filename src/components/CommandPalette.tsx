@@ -12,12 +12,14 @@ import {
   IconPlus,
   IconCheck,
   IconSun,
+  IconLink,
 } from './icons'
 
 export type NavTab =
   | 'daily'
   | 'standup'
   | 'kanban'
+  | 'dependencies'
   | 'team'
   | 'sprint'
   | 'decisions'
@@ -27,6 +29,7 @@ const NAV: { tab: NavTab; label: string; icon: typeof IconHome }[] = [
   { tab: 'daily', label: 'Oggi', icon: IconHome },
   { tab: 'standup', label: 'Standup', icon: IconSun },
   { tab: 'kanban', label: 'Kanban', icon: IconBoard },
+  { tab: 'dependencies', label: 'Dipendenze', icon: IconLink },
   { tab: 'team', label: 'Team & 1:1', icon: IconUsers },
   { tab: 'sprint', label: 'Sprint & Salute', icon: IconActivity },
   { tab: 'decisions', label: 'Decisioni & Azioni', icon: IconFile },

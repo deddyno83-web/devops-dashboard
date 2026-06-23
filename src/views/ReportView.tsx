@@ -34,6 +34,7 @@ export default function ReportView() {
   const activeSprint =
     data.sprints.find((s) => s.status === 'active') ?? data.sprints[0]
   const openRisks = data.risks.filter((r) => r.status !== 'closed')
+  const openDeps = data.dependencies.filter((x) => x.status !== 'closed')
   const recentDecisions = data.decisions.slice(0, 5)
 
   const week = mondayOf()
@@ -209,6 +210,24 @@ export default function ReportView() {
                   {r.title}{' '}
                   <span className="text-[var(--color-muted)]">
                     ({r.severity === 'high' ? 'alto' : r.severity === 'med' ? 'medio' : 'basso'})
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        )}
+
+        {openDeps.length > 0 && (
+          <Section title={`Dipendenze aperte (${openDeps.length})`}>
+            <ul className="space-y-0.5 text-sm">
+              {openDeps.map((x) => (
+                <li key={x.id} className="flex justify-between gap-3">
+                  <span>
+                    {x.title}
+                    {x.party ? ` · ${x.party}` : ''}
+                  </span>
+                  <span className="shrink-0 text-[var(--color-muted)]">
+                    {x.neededBy ? relativeDays(x.neededBy) : ''}
                   </span>
                 </li>
               ))}

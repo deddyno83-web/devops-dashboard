@@ -142,6 +142,49 @@ export interface DailyLog {
   createdAt: string
 }
 
+export type DependencyType = 'ticket' | 'approval' | 'vendor' | 'team' | 'info'
+export type DependencyStatus =
+  | 'open'
+  | 'waiting'
+  | 'chased'
+  | 'unblocked'
+  | 'closed'
+export type Criticality = 'low' | 'med' | 'high'
+
+/** External dependency / blocker on another party (the "D" of a RAID log). */
+export interface Dependency {
+  id: ID
+  title: string
+  party: string // who you depend on (team / vendor / person)
+  type: DependencyType
+  ref?: string // ticket id / reference
+  link?: string // URL to the ticket
+  status: DependencyStatus
+  neededBy?: string // ISO date
+  owner?: string // who chases it on your side
+  blocks?: string // what it blocks
+  criticality: Criticality
+  notes?: string
+  lastUpdate: string // ISO datetime — drives aging
+  createdAt: string
+}
+
+export const DEP_TYPES: { key: DependencyType; label: string }[] = [
+  { key: 'ticket', label: 'Ticket' },
+  { key: 'approval', label: 'Approvazione' },
+  { key: 'vendor', label: 'Vendor' },
+  { key: 'team', label: 'Altro team' },
+  { key: 'info', label: 'Info' },
+]
+
+export const DEP_STATUSES: { key: DependencyStatus; label: string }[] = [
+  { key: 'open', label: 'Aperta' },
+  { key: 'waiting', label: 'In attesa' },
+  { key: 'chased', label: 'Sollecitata' },
+  { key: 'unblocked', label: 'Sbloccata' },
+  { key: 'closed', label: 'Chiusa' },
+]
+
 export type ThemeMode = 'light' | 'dark' | 'system'
 
 export interface AppData {
@@ -162,6 +205,7 @@ export interface AppData {
   dora: DoraEntry[]
   skillList: string[]
   dailyLogs: Record<string, DailyLog>
+  dependencies: Dependency[]
   settings: { theme: ThemeMode; managerName?: string }
   updatedAt: string
 }
@@ -185,6 +229,7 @@ export function defaultData(): AppData {
     dora: [],
     skillList: [],
     dailyLogs: {},
+    dependencies: [],
     settings: { theme: 'system' },
     updatedAt: new Date().toISOString(),
   }

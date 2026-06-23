@@ -223,6 +223,7 @@ function migrate(d: Partial<AppData>): AppData {
     dora: d.dora ?? base.dora,
     skillList: d.skillList ?? base.skillList,
     dailyLogs: d.dailyLogs ?? base.dailyLogs,
+    dependencies: d.dependencies ?? base.dependencies,
     settings: { ...base.settings, ...(d.settings ?? {}) },
   }
 }

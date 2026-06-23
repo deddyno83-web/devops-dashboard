@@ -6,6 +6,7 @@ export type GuideKey =
   | 'daily'
   | 'standup'
   | 'kanban'
+  | 'dependencies'
   | 'team'
   | 'sprint'
   | 'decisions'
@@ -97,6 +98,32 @@ const GUIDES: Record<GuideKey, Guide> = {
       },
     ],
     cadence: 'Aggiorna durante la giornata · review delle card ferme una volta a settimana.',
+  },
+  dependencies: {
+    title: 'Dipendenze esterne',
+    intro:
+      'I ticket e i blocchi che dipendono da altri team o vendor: sono la «D» del RAID log e la causa #1 di lavoro fermo. L’obiettivo è renderli visibili e farli avanzare.',
+    sections: [
+      {
+        title: 'Come si usa',
+        items: [
+          '«Nuova dipendenza»: cosa serve, da chi, tipo (ticket/approvazione/vendor/altro team), riferimento e link, criticità, «needed by» e owner che la segue.',
+          'Cambia stato al volo dal menù (Aperta → In attesa → Sollecitata → Sbloccata → Chiusa); «Sollecita» registra il follow-up e aggiorna la data.',
+          'La barra in alto è il tuo semaforo: Aperte · Critiche in attesa · Scadute · Da sollecitare. L’etichetta «ferma da Xg» segnala quelle dimenticate.',
+          'Le dipendenze critiche o scadute compaiono anche nel cockpit «Oggi».',
+        ],
+      },
+      {
+        title: 'Buone pratiche (agile)',
+        items: [
+          'Ogni dipendenza ha un owner esplicito: senza un responsabile che la insegue, resta ferma.',
+          'Imposta sempre il «needed by»: una dipendenza senza data non è prioritizzabile.',
+          'Rendi visibili le dipendenze cross-team il prima possibile (planning / PI planning): si gestiscono prevenendo, non rincorrendo.',
+          'Una dipendenza «ferma da» troppo tempo va escalata, non solo sollecitata.',
+        ],
+      },
+    ],
+    cadence: 'Rivedi le aperte ogni giorno · sollecita le critiche prima che scadano.',
   },
   team: {
     title: 'Team & 1:1',

@@ -8,6 +8,7 @@ import {
   IconCalendar,
   IconWarn,
   IconBoard,
+  IconLink,
 } from '../components/icons'
 import {
   todayISO,
@@ -103,6 +104,15 @@ export default function DailyView() {
       }
     })
   }
+
+  // Critical / overdue external dependencies for the side rail
+  const hotDeps = data.dependencies
+    .filter(
+      (x) =>
+        x.status !== 'closed' &&
+        (x.criticality === 'high' || (daysFromToday(x.neededBy) ?? 9999) < 0),
+    )
+    .slice(0, 6)
 
   function setWeek(i: number, value: string) {
     update((d) => {
@@ -476,6 +486,29 @@ export default function DailyView() {
               </div>
             )}
           </Card>
+
+          {hotDeps.length > 0 && (
+            <Card className="p-5">
+              <div className="mb-3 flex items-center gap-2">
+                <IconLink width={16} height={16} />
+                <h3 className="text-sm font-semibold">Dipendenze critiche</h3>
+              </div>
+              <div className="space-y-2">
+                {hotDeps.map((x) => {
+                  const dd = daysFromToday(x.neededBy)
+                  const overdue = dd !== null && dd < 0
+                  return (
+                    <div key={x.id} className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm">{x.title}</span>
+                      <Badge color={overdue ? 'danger' : 'warning'}>
+                        {x.neededBy ? relativeDays(x.neededBy) : x.party || 'critica'}
+                      </Badge>
+                    </div>
+                  )
+                })}
+              </div>
+            </Card>
+          )}
         </div>
       </div>
 

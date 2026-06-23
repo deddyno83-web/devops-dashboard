@@ -17,6 +17,7 @@ import {
   IconPrint,
   IconSearch,
   IconSun,
+  IconLink,
 } from './components/icons'
 import DailyView from './views/DailyView'
 import KanbanView from './views/KanbanView'
@@ -25,14 +26,24 @@ import DecisionsView from './views/DecisionsView'
 import SprintHealthView from './views/SprintHealthView'
 import ReportView from './views/ReportView'
 import StandupView from './views/StandupView'
+import DependenciesView from './views/DependenciesView'
 import { CommandPalette } from './components/CommandPalette'
 
-type Tab = 'daily' | 'standup' | 'kanban' | 'team' | 'sprint' | 'decisions' | 'report'
+type Tab =
+  | 'daily'
+  | 'standup'
+  | 'kanban'
+  | 'dependencies'
+  | 'team'
+  | 'sprint'
+  | 'decisions'
+  | 'report'
 
 const NAV: { key: Tab; label: string; icon: typeof IconHome }[] = [
   { key: 'daily', label: 'Oggi', icon: IconHome },
   { key: 'standup', label: 'Standup', icon: IconSun },
   { key: 'kanban', label: 'Kanban', icon: IconBoard },
+  { key: 'dependencies', label: 'Dipendenze', icon: IconLink },
   { key: 'team', label: 'Team & 1:1', icon: IconUsers },
   { key: 'sprint', label: 'Sprint & Salute', icon: IconActivity },
   { key: 'decisions', label: 'Decisioni', icon: IconFile },
@@ -154,6 +165,7 @@ function Shell() {
           {tab === 'daily' && <DailyView />}
           {tab === 'standup' && <StandupView />}
           {tab === 'kanban' && <KanbanView />}
+          {tab === 'dependencies' && <DependenciesView />}
           {tab === 'team' && <TeamView />}
           {tab === 'sprint' && <SprintHealthView />}
           {tab === 'decisions' && <DecisionsView />}
