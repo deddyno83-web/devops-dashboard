@@ -15,12 +15,14 @@ import {
   uid,
   nowISO,
   fmtDate,
+  fmtTime,
   relativeDays,
   daysFromToday,
   mondayOf,
   weekLabel,
   parseCapture,
 } from '../lib/utils'
+import type { ActivityStatus } from '../types'
 import { PageHeader } from '../components/ui'
 import { GuideButton } from '../components/Guide'
 import { KANBAN_COLUMNS } from '../types'
@@ -102,6 +104,81 @@ export default function DailyView() {
         c.column = 'done'
         c.updatedAt = nowISO()
       }
+    })
+  }
+
+  // --- Activity diary (the day's worklog) ---
+  const activities = data.dailyActivities[today] ?? []
+  const [actText, setActText] = useState('')
+
+  function addActivity() {
+    const t = actText.trim()
+    if (!t) return
+    update((d) => {
+      const arr = [...(d.dailyActivities[today] ?? [])]
+      arr.push({ id: uid(), text: t, status: 'doing', createdAt: nowISO() })
+      d.dailyActivities[today] = arr
+    })
+    setActText('')
+  }
+
+  function cycleActivity(id: string) {
+    const order: ActivityStatus[] = ['todo', 'doing', 'done']
+    update((d) => {
+      const a = (d.dailyActivities[today] ?? []).find((x) => x.id === id)
+      if (a) a.status = order[(order.indexOf(a.status) + 1) % 3]
+    })
+  }
+
+  function setActivityText(id: string, text: string) {
+    update((d) => {
+      const a = (d.dailyActivities[today] ?? []).find((x) => x.id === id)
+      if (a) a.text = text
+    })
+  }
+
+  function setActivityNote(id: string, note: string) {
+    update((d) => {
+      const a = (d.dailyActivities[today] ?? []).find((x) => x.id === id)
+      if (a) a.note = note
+    })
+  }
+
+  function removeActivity(id: string) {
+    update((d) => {
+      d.dailyActivities[today] = (d.dailyActivities[today] ?? []).filter(
+        (x) => x.id !== id,
+      )
+    })
+  }
+
+  function promoteToPriority(text: string) {
+    update((d) => {
+      const arr = [...(d.dailyTop[today] ?? ['', '', ''])]
+      const idx = arr.findIndex((x) => !x || !x.trim())
+      if (idx >= 0) arr[idx] = text
+      d.dailyTop[today] = arr
+    })
+  }
+
+  // Carry-over of yesterday's unfinished activities
+  const prevActKey = Object.keys(data.dailyActivities)
+    .filter(
+      (k) => k < today && (data.dailyActivities[k] ?? []).some((a) => a.status !== 'done'),
+    )
+    .sort()
+    .pop()
+  const carryActs = prevActKey
+    ? (data.dailyActivities[prevActKey] ?? []).filter((a) => a.status !== 'done')
+    : []
+
+  function carryActivities() {
+    update((d) => {
+      const arr = [...(d.dailyActivities[today] ?? [])]
+      carryActs.forEach((a) =>
+        arr.push({ id: uid(), text: a.text, status: 'todo', note: a.note, createdAt: nowISO() }),
+      )
+      d.dailyActivities[today] = arr
     })
   }
 
@@ -308,6 +385,110 @@ export default function DailyView() {
                   note={topNotes[i] ?? ''}
                   onNoteChange={(v) => setTopNote(i, v)}
                 />
+              ))}
+            </div>
+          </Card>
+
+          <Card className="p-5">
+            <div className="mb-3 flex items-center gap-2">
+              <h3 className="text-sm font-semibold">Diario di oggi</h3>
+              <span className="text-xs text-[var(--color-muted)]">
+                {activities.filter((a) => a.status === 'done').length}/
+                {activities.length} fatte
+              </span>
+              {activities.length === 0 && carryActs.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="ml-auto"
+                  onClick={carryActivities}
+                >
+                  ↩ Riporta {carryActs.length} non finite
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <input
+                value={actText}
+                onChange={(e) => setActText(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addActivity()}
+                placeholder="Cosa stai facendo / hai fatto?"
+                className="h-9 flex-1 rounded-[calc(var(--radius)-0.25rem)] border bg-[var(--color-bg)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-primary)]/40"
+              />
+              <Button variant="primary" onClick={addActivity}>
+                <IconPlus /> Aggiungi
+              </Button>
+            </div>
+            <div className="mt-3 space-y-1.5">
+              {activities.length === 0 && (
+                <p className="py-2 text-center text-xs text-[var(--color-muted)]">
+                  Nessuna attività ancora. Registrale man mano che lavori: a fine
+                  giornata diventano il tuo standup.
+                </p>
+              )}
+              {activities.map((a) => (
+                <div
+                  key={a.id}
+                  className="group rounded-[calc(var(--radius)-0.25rem)] border px-3 py-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => cycleActivity(a.id)}
+                      title="Stato: da fare → in corso → fatto"
+                      className={
+                        'grid h-5 w-5 shrink-0 place-items-center rounded-md border ' +
+                        (a.status === 'done'
+                          ? 'border-[var(--color-success)] bg-[var(--color-success)] text-white'
+                          : a.status === 'doing'
+                            ? 'border-[var(--color-warning)]'
+                            : 'border-[var(--color-border)]')
+                      }
+                    >
+                      {a.status === 'done' ? (
+                        <IconCheck width={13} height={13} />
+                      ) : a.status === 'doing' ? (
+                        <span className="h-2 w-2 rounded-full bg-[var(--color-warning)]" />
+                      ) : null}
+                    </button>
+                    <input
+                      value={a.text}
+                      onChange={(e) => setActivityText(a.id, e.target.value)}
+                      className={
+                        'flex-1 bg-transparent text-sm outline-none ' +
+                        (a.status === 'done'
+                          ? 'text-[var(--color-muted)] line-through'
+                          : '')
+                      }
+                    />
+                    <span className="shrink-0 text-[11px] text-[var(--color-muted)]">
+                      {fmtTime(a.createdAt)}
+                    </span>
+                    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => promoteToPriority(a.text)}
+                        title="Promuovi a priorità del giorno"
+                      >
+                        ↑ priorità
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => removeActivity(a.id)}
+                        aria-label="Elimina"
+                      >
+                        <IconTrash width={14} height={14} />
+                      </Button>
+                    </div>
+                  </div>
+                  <input
+                    value={a.note ?? ''}
+                    onChange={(e) => setActivityNote(a.id, e.target.value)}
+                    placeholder="+ nota"
+                    className="ml-7 w-[calc(100%-1.75rem)] bg-transparent py-0.5 text-xs text-[var(--color-muted)] outline-none placeholder:text-[var(--color-muted)]/50 focus:text-[var(--color-fg)]"
+                  />
+                </div>
               ))}
             </div>
           </Card>

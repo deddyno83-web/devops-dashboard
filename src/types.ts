@@ -185,6 +185,17 @@ export const DEP_STATUSES: { key: DependencyStatus; label: string }[] = [
   { key: 'closed', label: 'Chiusa' },
 ]
 
+export type ActivityStatus = 'todo' | 'doing' | 'done'
+
+/** A logged activity in the day's diary — the raw material of the standup. */
+export interface Activity {
+  id: ID
+  text: string
+  status: ActivityStatus
+  note?: string
+  createdAt: string
+}
+
 export type ThemeMode = 'light' | 'dark' | 'system'
 
 export interface AppData {
@@ -200,6 +211,7 @@ export interface AppData {
   dailyTop: Record<string, string[]> // 'YYYY-MM-DD' -> up to 3 strings
   dailyTopNotes: Record<string, string[]> // 'YYYY-MM-DD' -> note per priority
   dailyDone: Record<string, boolean[]> // 'YYYY-MM-DD' -> completion per priority
+  dailyActivities: Record<string, Activity[]> // 'YYYY-MM-DD' -> activity diary
   sprints: Sprint[]
   risks: Risk[]
   dora: DoraEntry[]
@@ -224,6 +236,7 @@ export function defaultData(): AppData {
     dailyTop: {},
     dailyTopNotes: {},
     dailyDone: {},
+    dailyActivities: {},
     sprints: [],
     risks: [],
     dora: [],

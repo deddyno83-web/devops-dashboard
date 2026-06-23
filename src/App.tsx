@@ -45,7 +45,8 @@ const NAV: { key: Tab; label: string; icon: typeof IconHome }[] = [
   { key: 'kanban', label: 'Kanban', icon: IconBoard },
   { key: 'dependencies', label: 'Dipendenze', icon: IconLink },
   { key: 'team', label: 'Team & 1:1', icon: IconUsers },
-  { key: 'sprint', label: 'Sprint & Salute', icon: IconActivity },
+  // Sprint & Salute disabilitata per ora (riattivabile aggiungendo questa voce):
+  // { key: 'sprint', label: 'Sprint & Salute', icon: IconActivity },
   { key: 'decisions', label: 'Decisioni', icon: IconFile },
   { key: 'report', label: 'Report', icon: IconPrint },
 ]

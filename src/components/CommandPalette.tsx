@@ -31,7 +31,6 @@ const NAV: { tab: NavTab; label: string; icon: typeof IconHome }[] = [
   { tab: 'kanban', label: 'Kanban', icon: IconBoard },
   { tab: 'dependencies', label: 'Dipendenze', icon: IconLink },
   { tab: 'team', label: 'Team & 1:1', icon: IconUsers },
-  { tab: 'sprint', label: 'Sprint & Salute', icon: IconActivity },
   { tab: 'decisions', label: 'Decisioni & Azioni', icon: IconFile },
   { tab: 'report', label: 'Report', icon: IconPrint },
 ]

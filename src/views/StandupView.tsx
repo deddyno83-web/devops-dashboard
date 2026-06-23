@@ -27,16 +27,13 @@ export default function StandupView() {
   const existing = data.dailyLogs[today]
   const activeSprint = data.sprints.find((s) => s.status === 'active')
 
-  // --- auto suggestions from today's data ---
-  const doneToday = data.kanban
-    .filter((c) => c.column === 'done' && (c.updatedAt || '').slice(0, 10) === today)
-    .map((c) => c.title)
+  // --- auto suggestions: primarily from the day's activity diary ---
+  const acts = data.dailyActivities[today] ?? []
+  const actsDone = acts.filter((a) => a.status === 'done').map((a) => a.text)
+  const actsOpen = acts.filter((a) => a.status !== 'done').map((a) => a.text)
   const prioritiesDone = (data.dailyTop[today] ?? []).filter(
     (t, i) => t && t.trim() && (data.dailyDone[today] ?? [])[i],
   )
-  const doingCards = data.kanban
-    .filter((c) => c.column === 'doing')
-    .map((c) => c.title)
   const prioritiesOpen = (data.dailyTop[today] ?? []).filter(
     (t, i) => t && t.trim() && !(data.dailyDone[today] ?? [])[i],
   )
@@ -44,8 +41,8 @@ export default function StandupView() {
     .filter((c) => c.column === 'blocked')
     .map((c) => c.title)
 
-  const suggestDone = uniq([...doneToday, ...prioritiesDone])
-  const suggestCarry = uniq([...doingCards, ...prioritiesOpen])
+  const suggestDone = uniq([...actsDone, ...prioritiesDone])
+  const suggestCarry = uniq([...actsOpen, ...prioritiesOpen])
   const suggestBlockers = uniq(blockedCards)
 
   // --- end-of-day form state ---
