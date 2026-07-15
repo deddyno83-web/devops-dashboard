@@ -196,6 +196,67 @@ export interface Activity {
   createdAt: string
 }
 
+/* ------------------------------ ART Sync (SAFe) ---------------------------- *
+ * Coach Sync (ex Scrum of Scrums) + PO Sync, facilitated by the RTE.
+ * Focus: progress toward PI objectives, impediments, cross-team dependencies,
+ * risks (ROAM) and scope/priority changes. Output = actions with owners.      */
+
+export type ArtSyncCategory =
+  | 'progress'
+  | 'impediment'
+  | 'dependency'
+  | 'risk'
+  | 'scope'
+
+/** SAFe risk handling: Resolved / Owned / Accepted / Mitigated. */
+export type RoamStatus = 'resolved' | 'owned' | 'accepted' | 'mitigated'
+
+export interface ArtSyncPoint {
+  id: ID
+  category: ArtSyncCategory
+  text: string
+  note?: string
+  reported: boolean
+  roam?: RoamStatus // only meaningful for category 'risk'
+}
+
+export interface ArtSyncAction {
+  id: ID
+  title: string
+  owner?: string
+  priority: Priority
+  due?: string
+  done: boolean
+  createdAt: string
+}
+
+export interface ArtSync {
+  date: string // YYYY-MM-DD
+  points: ArtSyncPoint[]
+  actions: ArtSyncAction[]
+  createdAt: string
+}
+
+export const ART_CATEGORIES: {
+  key: ArtSyncCategory
+  label: string
+  hint: string
+  suggestable?: boolean
+}[] = [
+  { key: 'progress', label: 'Progresso', hint: 'verso obiettivi di PI / feature' },
+  { key: 'impediment', label: 'Impedimenti', hint: 'da escalare', suggestable: true },
+  { key: 'dependency', label: 'Dipendenze a rischio', hint: 'cross-team', suggestable: true },
+  { key: 'risk', label: 'Rischi (ROAM)', hint: 'Resolved / Owned / Accepted / Mitigated' },
+  { key: 'scope', label: 'Scope / priorità', hint: 'parte PO Sync' },
+]
+
+export const ROAM_STATUSES: { key: RoamStatus; label: string }[] = [
+  { key: 'resolved', label: 'Resolved' },
+  { key: 'owned', label: 'Owned' },
+  { key: 'accepted', label: 'Accepted' },
+  { key: 'mitigated', label: 'Mitigated' },
+]
+
 export type ThemeMode = 'light' | 'dark' | 'system'
 
 export interface AppData {
@@ -218,6 +279,7 @@ export interface AppData {
   skillList: string[]
   dailyLogs: Record<string, DailyLog>
   dependencies: Dependency[]
+  artSyncs: Record<string, ArtSync>
   settings: { theme: ThemeMode; managerName?: string }
   updatedAt: string
 }
@@ -243,6 +305,7 @@ export function defaultData(): AppData {
     skillList: [],
     dailyLogs: {},
     dependencies: [],
+    artSyncs: {},
     settings: { theme: 'system' },
     updatedAt: new Date().toISOString(),
   }

@@ -225,6 +225,7 @@ function migrate(d: Partial<AppData>): AppData {
     skillList: d.skillList ?? base.skillList,
     dailyLogs: d.dailyLogs ?? base.dailyLogs,
     dependencies: d.dependencies ?? base.dependencies,
+    artSyncs: d.artSyncs ?? base.artSyncs,
     settings: { ...base.settings, ...(d.settings ?? {}) },
   }
 }

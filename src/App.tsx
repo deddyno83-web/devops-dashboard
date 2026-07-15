@@ -18,6 +18,7 @@ import {
   IconSearch,
   IconSun,
   IconLink,
+  IconTrain,
 } from './components/icons'
 import DailyView from './views/DailyView'
 import KanbanView from './views/KanbanView'
@@ -27,11 +28,13 @@ import SprintHealthView from './views/SprintHealthView'
 import ReportView from './views/ReportView'
 import StandupView from './views/StandupView'
 import DependenciesView from './views/DependenciesView'
+import ArtSyncView from './views/ArtSyncView'
 import { CommandPalette } from './components/CommandPalette'
 
 type Tab =
   | 'daily'
   | 'standup'
+  | 'artsync'
   | 'kanban'
   | 'dependencies'
   | 'team'
@@ -42,6 +45,7 @@ type Tab =
 const NAV: { key: Tab; label: string; icon: typeof IconHome }[] = [
   { key: 'daily', label: 'Oggi', icon: IconHome },
   { key: 'standup', label: 'Standup', icon: IconSun },
+  { key: 'artsync', label: 'ART Sync', icon: IconTrain },
   { key: 'kanban', label: 'Kanban', icon: IconBoard },
   { key: 'dependencies', label: 'Dipendenze', icon: IconLink },
   { key: 'team', label: 'Team & 1:1', icon: IconUsers },
@@ -165,6 +169,7 @@ function Shell() {
         <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
           {tab === 'daily' && <DailyView />}
           {tab === 'standup' && <StandupView />}
+          {tab === 'artsync' && <ArtSyncView />}
           {tab === 'kanban' && <KanbanView />}
           {tab === 'dependencies' && <DependenciesView />}
           {tab === 'team' && <TeamView />}

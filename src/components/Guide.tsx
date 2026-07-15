@@ -5,6 +5,7 @@ import { IconHelp } from './icons'
 export type GuideKey =
   | 'daily'
   | 'standup'
+  | 'artsync'
   | 'kanban'
   | 'dependencies'
   | 'team'
@@ -73,6 +74,33 @@ const GUIDES: Record<GuideKey, Guide> = {
       },
     ],
     cadence: 'Chiusura a fine giornata · standup il mattino dopo, sempre alla stessa ora.',
+  },
+  artsync: {
+    title: 'ART Sync',
+    intro:
+      'Evento SAFe facilitato dall’RTE: unisce il Coach Sync (ex Scrum of Scrums, lato esecuzione) e il PO Sync (lato scope e priorità). Serve a dare visibilità sul progresso verso gli obiettivi di PI e a far emergere impedimenti e dipendenze.',
+    sections: [
+      {
+        title: 'Come si usa',
+        items: [
+          'La mattina apri la sezione sulla data di oggi e compila «Da riportare» nelle 5 aree: Progresso · Impedimenti · Dipendenze a rischio · Rischi (ROAM) · Scope.',
+          '«↻ suggerisci» pesca automaticamente gli impedimenti dalle card Kanban «Bloccato» e le dipendenze critiche/scadute dalla sezione Dipendenze.',
+          'Durante il meeting spunta «riportato» su ogni punto e usa la nota per annotare cosa è emerso.',
+          'Le action in uscita: assegna owner, priorità e scadenza, poi portale nella giornata con «→ Diario» (attività di oggi) o «→ Kanban» (card con priorità).',
+          '«Copia» ti mette il riepilogo negli appunti, pronto per Teams/Slack.',
+        ],
+      },
+      {
+        title: 'Le regole (SAFe)',
+        items: [
+          'Timebox 30-60 minuti: nel sync si IDENTIFICANO i problemi, non si risolvono. Il confronto tecnico va nel «meet after».',
+          'Da ogni ART Sync deve uscire almeno un’action con owner e data: senza owner, nulla si muove.',
+          'I rischi si gestiscono con ROAM: Resolved (risolto), Owned (qualcuno lo prende in carico), Accepted (accettato così com’è), Mitigated (c’è un piano di mitigazione).',
+          'Le dipendenze cross-team vanno rese visibili il prima possibile: sono la causa principale di ritardo sul PI.',
+        ],
+      },
+    ],
+    cadence: 'Preparazione ogni mattina prima del meeting · action gestite nella giornata.',
   },
   kanban: {
     title: 'Kanban personale',
