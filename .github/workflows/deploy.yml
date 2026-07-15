@@ -1,7 +1,12 @@
 name: Deploy dashboard to GitHub Pages
 
-# Builds the single-file dashboard and publishes dist/ to GitHub Pages
-# on every push to main. No manual build needed.
+# Builds the single-file dashboard and force-pushes dist/ to the `gh-pages`
+# branch. GitHub Pages must be set to: Deploy from a branch -> gh-pages -> /(root)
+#
+# Why a dedicated branch: the repo root index.html is the Vite SOURCE template
+# (it points at /src/main.tsx and is useless in production). If Pages serves
+# main/root it publishes that source file and the site renders blank. Publishing
+# the built output to its own branch removes the conflict for good.
 
 on:
   push:
@@ -9,17 +14,14 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
-# Allow only one concurrent deployment.
 concurrency:
-  group: pages
+  group: pages-deploy
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,17 +31,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Publish dist/ to gh-pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd dist
+          touch .nojekyll
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "deploy ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages:gh-pages
