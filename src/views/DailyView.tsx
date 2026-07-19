@@ -9,6 +9,7 @@ import {
   IconWarn,
   IconBoard,
   IconLink,
+  IconActivity,
 } from '../components/icons'
 import {
   todayISO,
@@ -126,7 +127,13 @@ export default function DailyView() {
     const order: ActivityStatus[] = ['todo', 'doing', 'done']
     update((d) => {
       const a = (d.dailyActivities[today] ?? []).find((x) => x.id === id)
-      if (a) a.status = order[(order.indexOf(a.status) + 1) % 3]
+      if (!a) return
+      a.status = order[(order.indexOf(a.status) + 1) % 3]
+      // Linked action (e.g. from ART Sync): keep one single state everywhere.
+      if (a.actionId) {
+        const act = d.actions.find((x) => x.id === a.actionId)
+        if (act) act.status = a.status
+      }
     })
   }
 
@@ -176,11 +183,44 @@ export default function DailyView() {
     update((d) => {
       const arr = [...(d.dailyActivities[today] ?? [])]
       carryActs.forEach((a) =>
-        arr.push({ id: uid(), text: a.text, status: 'todo', note: a.note, createdAt: nowISO() }),
+        arr.push({
+          id: uid(),
+          text: a.text,
+          status: 'todo',
+          note: a.note,
+          actionId: a.actionId,
+          carryCount: (a.carryCount ?? 0) + 1,
+          createdAt: nowISO(),
+        }),
       )
       d.dailyActivities[today] = arr
     })
   }
+
+  // Automatic weekly mini-trend — derived from existing data, zero input.
+  const wkStart = mondayOf()
+  const prevWkStart = mondayOf(new Date(Date.now() - 7 * 86400000))
+  const trend = (() => {
+    let doneThis = 0
+    let doneLast = 0
+    let carriesThis = 0
+    for (const [day, acts] of Object.entries(data.dailyActivities)) {
+      for (const a of acts) {
+        if (a.status === 'done') {
+          if (day >= wkStart) doneThis++
+          else if (day >= prevWkStart) doneLast++
+        }
+        if ((a.carryCount ?? 0) > 0 && day >= wkStart) carriesThis++
+      }
+    }
+    const kanbanDone = data.kanban.filter(
+      (c) => c.column === 'done' && c.updatedAt.slice(0, 10) >= wkStart,
+    ).length
+    const depsClosed = data.dependencies.filter(
+      (x) => x.status === 'closed' && x.lastUpdate.slice(0, 10) >= wkStart,
+    ).length
+    return { doneThis, doneLast, carriesThis, kanbanDone, depsClosed }
+  })()
 
   // Critical / overdue external dependencies for the side rail
   const hotDeps = data.dependencies
@@ -460,6 +500,11 @@ export default function DailyView() {
                           : '')
                       }
                     />
+                    {(a.carryCount ?? 0) > 0 && (
+                      <Badge color={(a.carryCount ?? 0) >= 2 ? 'danger' : 'warning'}>
+                        {(a.carryCount ?? 0) + 1}° giorno
+                      </Badge>
+                    )}
                     <span className="shrink-0 text-[11px] text-[var(--color-muted)]">
                       {fmtTime(a.createdAt)}
                     </span>
@@ -690,6 +735,43 @@ export default function DailyView() {
               </div>
             </Card>
           )}
+
+          <Card className="p-5">
+            <div className="mb-3 flex items-center gap-2">
+              <IconActivity width={16} height={16} />
+              <h3 className="text-sm font-semibold">Andamento settimana</h3>
+            </div>
+            <div className="space-y-1.5 text-sm">
+              <div className="flex items-center justify-between">
+                <span>Attività chiuse</span>
+                <span className="font-semibold tabular-nums">
+                  {trend.doneThis}
+                  <span className="ml-1 text-xs font-normal text-[var(--color-muted)]">
+                    (scorsa: {trend.doneLast})
+                  </span>
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Attività riportate</span>
+                <span
+                  className={
+                    'font-semibold tabular-nums ' +
+                    (trend.carriesThis >= 3 ? 'text-[var(--color-danger)]' : '')
+                  }
+                >
+                  {trend.carriesThis}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Card Kanban chiuse</span>
+                <span className="font-semibold tabular-nums">{trend.kanbanDone}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Dipendenze chiuse</span>
+                <span className="font-semibold tabular-nums">{trend.depsClosed}</span>
+              </div>
+            </div>
+          </Card>
         </div>
       </div>
 

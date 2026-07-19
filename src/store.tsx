@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import type { AppData } from './types'
+import type { AppData, ArtSync, RoamRisk } from './types'
 import { defaultData } from './types'
 import { nowISO, mondayOf } from './lib/utils'
 import {
@@ -204,13 +204,90 @@ function migrate(d: Partial<AppData>): AppData {
   ) {
     weeklyFocus[mondayOf()] = d.weekTop
   }
+
+  // One-time migration: build the persistent ROAM register from the legacy
+  // sprint-section risks and the per-date ART Sync risk points. Sources are
+  // left untouched in the payload (no data loss); runs only while roamRisks
+  // is absent, so it never duplicates.
+  let roamRisks = d.roamRisks
+  if (!roamRisks) {
+    roamRisks = []
+    for (const r of d.risks ?? []) {
+      roamRisks.push({
+        id: r.id,
+        title: r.title,
+        roam:
+          r.status === 'mitigated'
+            ? 'mitigated'
+            : r.status === 'closed'
+              ? 'resolved'
+              : undefined,
+        note: r.notes,
+        createdAt: r.createdAt,
+        updatedAt: r.createdAt,
+      })
+    }
+    const byTitle = new Map(
+      roamRisks.map((r) => [r.title.trim().toLowerCase(), r]),
+    )
+    for (const date of Object.keys(d.artSyncs ?? {}).sort()) {
+      const s = (d.artSyncs ?? {})[date]
+      for (const p of s.points ?? []) {
+        if (p.category !== 'risk' || !p.text.trim()) continue
+        const key = p.text.trim().toLowerCase()
+        const existing = byTitle.get(key)
+        if (existing) {
+          // newer sync wins on classification/notes
+          if (p.roam) existing.roam = p.roam
+          if (p.note) existing.note = p.note
+          existing.updatedAt = s.createdAt ?? existing.updatedAt
+        } else {
+          const r: RoamRisk = {
+            id: p.id,
+            title: p.text.trim(),
+            roam: p.roam,
+            note: p.note,
+            createdAt: s.createdAt ?? nowISO(),
+            updatedAt: s.createdAt ?? nowISO(),
+          }
+          roamRisks.push(r)
+          byTitle.set(key, r)
+        }
+      }
+    }
+  }
+
+  // Migration: ART Sync actions move into the unified actions list (tagged
+  // source 'art-sync'). Idempotent — matched by id, so re-running or
+  // re-importing never duplicates. The per-sync arrays are emptied (moved).
+  const actions = [...(d.actions ?? [])]
+  const artSyncs: Record<string, ArtSync> = {}
+  for (const [date, s] of Object.entries(d.artSyncs ?? {})) {
+    for (const a of s.actions ?? []) {
+      if (!actions.some((x) => x.id === a.id)) {
+        actions.push({
+          id: a.id,
+          title: a.title,
+          owner: a.owner,
+          due: a.due,
+          status: a.done ? 'done' : 'todo',
+          createdAt: a.createdAt,
+          priority: a.priority,
+          source: 'art-sync',
+          syncDate: date,
+        })
+      }
+    }
+    artSyncs[date] = { ...s, actions: [] }
+  }
+
   return {
     ...base,
     ...d,
     people: d.people ?? base.people,
     kanban: d.kanban ?? base.kanban,
     decisions: d.decisions ?? base.decisions,
-    actions: d.actions ?? base.actions,
+    actions,
     quickCapture: d.quickCapture ?? base.quickCapture,
     weekTop: d.weekTop ?? base.weekTop,
     weeklyFocus,
@@ -225,7 +302,8 @@ function migrate(d: Partial<AppData>): AppData {
     skillList: d.skillList ?? base.skillList,
     dailyLogs: d.dailyLogs ?? base.dailyLogs,
     dependencies: d.dependencies ?? base.dependencies,
-    artSyncs: d.artSyncs ?? base.artSyncs,
+    artSyncs,
+    roamRisks,
     settings: { ...base.settings, ...(d.settings ?? {}) },
   }
 }

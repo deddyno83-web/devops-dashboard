@@ -18,7 +18,7 @@ import {
   IconCheck,
   IconSun,
 } from '../components/icons'
-import { todayISO, nowISO, fmtDate } from '../lib/utils'
+import { todayISO, nowISO, fmtDate, mondayOf, daysFromToday } from '../lib/utils'
 import { GuideButton } from '../components/Guide'
 
 export default function StandupView() {
@@ -26,6 +26,16 @@ export default function StandupView() {
   const today = todayISO()
   const existing = data.dailyLogs[today]
   const activeSprint = data.sprints.find((s) => s.status === 'active')
+  // Goal shown on top: the active sprint if one exists (legacy data),
+  // otherwise this week's focus from the Daily view.
+  const weekFocus = (data.weeklyFocus[mondayOf()] ?? []).filter(
+    (x) => x && x.trim(),
+  )
+  const goalText =
+    activeSprint?.goals || (weekFocus.length ? weekFocus.join(' · ') : undefined)
+  const goalLabel = activeSprint?.goals
+    ? `Obiettivo sprint${activeSprint.name ? ` · ${activeSprint.name}` : ''}`
+    : 'Focus della settimana'
 
   // --- auto suggestions: primarily from the day's activity diary ---
   const acts = data.dailyActivities[today] ?? []
@@ -40,10 +50,18 @@ export default function StandupView() {
   const blockedCards = data.kanban
     .filter((c) => c.column === 'blocked')
     .map((c) => c.title)
+  const depBlockers = data.dependencies
+    .filter(
+      (x) =>
+        x.status !== 'closed' &&
+        x.status !== 'unblocked' &&
+        (x.criticality === 'high' || (daysFromToday(x.neededBy) ?? 9999) < 0),
+    )
+    .map((x) => (x.party ? `${x.title} · ${x.party}` : x.title))
 
   const suggestDone = uniq([...actsDone, ...prioritiesDone])
   const suggestCarry = uniq([...actsOpen, ...prioritiesOpen])
-  const suggestBlockers = uniq(blockedCards)
+  const suggestBlockers = uniq([...blockedCards, ...depBlockers])
 
   // --- end-of-day form state ---
   const [done, setDone] = useState<string[]>(existing?.done ?? suggestDone)
@@ -91,12 +109,12 @@ export default function StandupView() {
         actions={<GuideButton section="standup" />}
       />
 
-      {activeSprint?.goals && (
+      {goalText && (
         <div className="mb-4 flex items-start gap-2 rounded-[var(--radius)] border bg-[color-mix(in_oklch,var(--color-primary)_8%,transparent)] px-4 py-2.5 text-sm">
           <span className="font-semibold text-[var(--color-primary)]">
-            Obiettivo sprint{activeSprint.name ? ` · ${activeSprint.name}` : ''}:
+            {goalLabel}:
           </span>
-          <span className="whitespace-pre-wrap">{activeSprint.goals}</span>
+          <span className="whitespace-pre-wrap">{goalText}</span>
         </div>
       )}
 
@@ -162,7 +180,7 @@ export default function StandupView() {
               </Select>
             )}
             <CopyButton
-              text={report ? buildStandupText(report, activeSprint?.goals) : ''}
+              text={report ? buildStandupText(report, goalText) : ''}
               disabled={!report}
             />
           </div>
@@ -192,11 +210,11 @@ function uniq(arr: string[]): string[] {
 
 function buildStandupText(
   log: { done: string[]; notes: string; carryOver: string[]; blockers: string[]; date: string },
-  sprintGoal?: string,
+  goal?: string,
 ): string {
   const L: string[] = []
   L.push(`Daily standup — ${fmtDate(log.date)}`)
-  if (sprintGoal) L.push(`Obiettivo sprint: ${sprintGoal.replace(/\n/g, ' ')}`)
+  if (goal) L.push(`Obiettivo: ${goal.replace(/\n/g, ' ')}`)
   L.push('')
   L.push('Ieri:')
   log.done.forEach((d) => L.push(`- ${d}`))

@@ -78,6 +78,9 @@ export interface ActionItem {
   due?: string // ISO date
   status: ActionStatus
   createdAt: string
+  priority?: Priority
+  source?: 'art-sync' // provenance tag; undefined = created by hand
+  syncDate?: string // for art-sync actions: the sync (YYYY-MM-DD) they came from
 }
 
 export interface QuickNote {
@@ -165,6 +168,7 @@ export interface Dependency {
   blocks?: string // what it blocks
   criticality: Criticality
   notes?: string
+  chaseCount?: number // "Sollecita" clicks — at 3+ the app flags "da escalare"
   lastUpdate: string // ISO datetime — drives aging
   createdAt: string
 }
@@ -194,6 +198,8 @@ export interface Activity {
   status: ActivityStatus
   note?: string
   createdAt: string
+  carryCount?: number // times carried over from previous days
+  actionId?: ID // linked ActionItem — completing the activity completes the action
 }
 
 /* ------------------------------ ART Sync (SAFe) ---------------------------- *
@@ -233,7 +239,10 @@ export interface ArtSyncAction {
 export interface ArtSync {
   date: string // YYYY-MM-DD
   points: ArtSyncPoint[]
+  /** Legacy: actions now live in AppData.actions (source 'art-sync'); emptied by migration. */
   actions: ArtSyncAction[]
+  /** RoamRisk ids marked as "reported" during this sync. */
+  reportedRisks?: ID[]
   createdAt: string
 }
 
@@ -256,6 +265,20 @@ export const ROAM_STATUSES: { key: RoamStatus; label: string }[] = [
   { key: 'accepted', label: 'Accepted' },
   { key: 'mitigated', label: 'Mitigated' },
 ]
+
+/**
+ * Persistent ROAM risk register (SAFe): a risk lives across syncs until it
+ * becomes Resolved — it is not a per-meeting note.
+ */
+export interface RoamRisk {
+  id: ID
+  title: string
+  roam?: RoamStatus // undefined = still to classify
+  owner?: string
+  note?: string
+  createdAt: string
+  updatedAt: string
+}
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
@@ -280,6 +303,7 @@ export interface AppData {
   dailyLogs: Record<string, DailyLog>
   dependencies: Dependency[]
   artSyncs: Record<string, ArtSync>
+  roamRisks: RoamRisk[]
   settings: { theme: ThemeMode; managerName?: string }
   updatedAt: string
 }
@@ -306,6 +330,7 @@ export function defaultData(): AppData {
     dailyLogs: {},
     dependencies: [],
     artSyncs: {},
+    roamRisks: [],
     settings: { theme: 'system' },
     updatedAt: new Date().toISOString(),
   }

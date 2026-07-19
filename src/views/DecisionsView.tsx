@@ -407,6 +407,26 @@ function ActionItems() {
                 >
                   {a.title}
                 </span>
+                {a.source === 'art-sync' && (
+                  <Badge color="neutral">ART Sync</Badge>
+                )}
+                {a.priority && (
+                  <Badge
+                    color={
+                      a.priority === 'high'
+                        ? 'danger'
+                        : a.priority === 'low'
+                          ? 'neutral'
+                          : 'warning'
+                    }
+                  >
+                    {a.priority === 'high'
+                      ? 'Alta'
+                      : a.priority === 'low'
+                        ? 'Bassa'
+                        : 'Media'}
+                  </Badge>
+                )}
                 {a.owner && <Badge color="primary">{a.owner}</Badge>}
                 {a.due && (
                   <Badge color={overdue ? 'danger' : 'neutral'}>

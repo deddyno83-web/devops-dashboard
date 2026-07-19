@@ -44,6 +44,7 @@ const CRIT_META: Record<Criticality, { label: string; color: any; weight: number
   low: { label: 'Bassa', color: 'neutral', weight: 2 },
 }
 const STALE_DAYS = 5
+const ESCALATE_AFTER = 3 // solleciti oltre i quali la dipendenza va escalata
 
 const emptyDraft = (): Partial<Dependency> => ({
   title: '',
@@ -131,10 +132,16 @@ export default function DependenciesView() {
       const x = d.dependencies.find((y) => y.id === id)
       if (x) {
         x.status = 'chased'
+        x.chaseCount = (x.chaseCount ?? 0) + 1
         x.lastUpdate = nowISO()
       }
     })
   }
+
+  const needsEscalation = (x: Dependency) =>
+    (x.chaseCount ?? 0) >= ESCALATE_AFTER &&
+    x.status !== 'closed' &&
+    x.status !== 'unblocked'
 
   const isOpen = (x: Dependency) => x.status !== 'closed'
   const isStale = (x: Dependency) =>
@@ -149,6 +156,7 @@ export default function DependenciesView() {
     { label: 'Critiche in attesa', value: deps.filter((x) => x.criticality === 'high' && x.status !== 'closed' && x.status !== 'unblocked').length, color: 'var(--color-danger)' },
     { label: 'Scadute', value: deps.filter(isOverdue).length, color: 'var(--color-danger)' },
     { label: 'Da sollecitare', value: deps.filter(isStale).length, color: 'var(--color-warning)' },
+    { label: 'Da escalare', value: deps.filter(needsEscalation).length, color: 'var(--color-danger)' },
   ]
 
   const parties = Array.from(new Set(deps.map((x) => x.party).filter(Boolean)))
@@ -183,7 +191,7 @@ export default function DependenciesView() {
         }
       />
 
-      <div className="mb-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-2 lg:grid-cols-5">
         {kpis.map((k) => (
           <div key={k.label} className="flex items-center gap-3 rounded-[var(--radius)] border bg-[var(--color-surface)] px-3 py-2">
             <span className="h-7 w-1 rounded-full" style={{ background: k.color }} />
@@ -261,6 +269,10 @@ export default function DependenciesView() {
                     </Badge>
                   )}
                   {stale && <Badge color="warning">ferma da {age}g</Badge>}
+                  {(x.chaseCount ?? 0) > 0 && (
+                    <Badge color="neutral">×{x.chaseCount} solleciti</Badge>
+                  )}
+                  {needsEscalation(x) && <Badge color="danger">da escalare</Badge>}
 
                   <Select value={x.status} onChange={(e) => setStatus(x.id, e.target.value as DependencyStatus)} className="h-8">
                     {DEP_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}

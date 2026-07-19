@@ -4,7 +4,8 @@ import {
   type AppData,
   type ArtSync,
   type ArtSyncCategory,
-  type ArtSyncAction,
+  type ActionItem,
+  type RoamRisk,
   type RoamStatus,
   type Priority,
   ART_CATEGORIES,
@@ -27,7 +28,15 @@ import {
   IconTrain,
   IconBoard,
 } from '../components/icons'
-import { uid, nowISO, todayISO, fmtDate, daysFromToday, cn } from '../lib/utils'
+import {
+  uid,
+  nowISO,
+  todayISO,
+  fmtDate,
+  daysFromToday,
+  ageInDays,
+  cn,
+} from '../lib/utils'
 import { GuideButton } from '../components/Guide'
 
 const ROAM_COLOR: Record<RoamStatus, any> = {
@@ -52,11 +61,21 @@ export default function ArtSyncView() {
   const { data, update } = useStore()
   const [date, setDate] = useState(todayISO())
   const [actionText, setActionText] = useState('')
+  const [showResolved, setShowResolved] = useState(false)
   const sync = data.artSyncs[date]
-  const points = sync?.points ?? []
-  const actions = sync?.actions ?? []
+  const points = (sync?.points ?? []).filter((p) => p.category !== 'risk')
 
-  /* ---------------- points ---------------- */
+  // Persistent ROAM register (risks live across syncs until Resolved)
+  const openRisks = data.roamRisks.filter((r) => r.roam !== 'resolved')
+  const resolvedRisks = data.roamRisks.filter((r) => r.roam === 'resolved')
+  const reportedRiskIds = new Set(sync?.reportedRisks ?? [])
+
+  // Unified actions store, filtered on this sync
+  const actions = data.actions.filter(
+    (a) => a.source === 'art-sync' && a.syncDate === date,
+  )
+
+  /* ---------------- points (non-risk categories) ---------------- */
   function addPoint(category: ArtSyncCategory, text: string) {
     const t = text.trim()
     if (!t) return
@@ -84,7 +103,9 @@ export default function ArtSyncView() {
 
   /** Pull impediments / at-risk dependencies from the rest of the dashboard. */
   function suggest(category: ArtSyncCategory) {
-    const existing = new Set(points.filter((p) => p.category === category).map((p) => p.text))
+    const existing = new Set(
+      points.filter((p) => p.category === category).map((p) => p.text),
+    )
     let candidates: string[] = []
     if (category === 'impediment') {
       candidates = data.kanban
@@ -109,48 +130,89 @@ export default function ArtSyncView() {
     })
   }
 
-  /* ---------------- actions ---------------- */
+  /* ---------------- ROAM risk register ---------------- */
+  function addRisk(text: string) {
+    const t = text.trim()
+    if (!t) return
+    update((d) => {
+      d.roamRisks.push({ id: uid(), title: t, createdAt: nowISO(), updatedAt: nowISO() })
+    })
+  }
+  function patchRisk(id: string, patch: Partial<RoamRisk>) {
+    update((d) => {
+      const r = d.roamRisks.find((x) => x.id === id)
+      if (r) {
+        Object.assign(r, patch)
+        r.updatedAt = nowISO()
+      }
+    })
+  }
+  function removeRisk(id: string) {
+    update((d) => {
+      d.roamRisks = d.roamRisks.filter((x) => x.id !== id)
+    })
+  }
+  function toggleRiskReported(id: string) {
+    update((d) => {
+      const s = ensureSync(d, date)
+      const set = new Set(s.reportedRisks ?? [])
+      if (set.has(id)) set.delete(id)
+      else set.add(id)
+      s.reportedRisks = [...set]
+    })
+  }
+
+  /* ---------------- actions (unified store) ---------------- */
   function addAction() {
     const t = actionText.trim()
     if (!t) return
     update((d) => {
-      ensureSync(d, date).actions.push({
+      ensureSync(d, date) // so the date shows up among recent syncs
+      d.actions.unshift({
         id: uid(),
         title: t,
+        status: 'todo',
         priority: 'med',
-        done: false,
+        source: 'art-sync',
+        syncDate: date,
         createdAt: nowISO(),
       })
     })
     setActionText('')
   }
-  function patchAction(id: string, patch: Partial<ArtSyncAction>) {
+  function patchAction(id: string, patch: Partial<ActionItem>) {
     update((d) => {
-      const a = ensureSync(d, date).actions.find((x) => x.id === id)
+      const a = d.actions.find((x) => x.id === id)
       if (a) Object.assign(a, patch)
     })
   }
   function removeAction(id: string) {
     update((d) => {
-      const s = ensureSync(d, date)
-      s.actions = s.actions.filter((x) => x.id !== id)
+      d.actions = d.actions.filter((x) => x.id !== id)
     })
   }
-  function toDiario(a: ArtSyncAction) {
+  function toDiario(a: ActionItem) {
     const today = todayISO()
     update((d) => {
       const arr = [...(d.dailyActivities[today] ?? [])]
-      arr.push({ id: uid(), text: a.title, status: 'todo', note: 'da ART Sync', createdAt: nowISO() })
+      arr.push({
+        id: uid(),
+        text: a.title,
+        status: 'todo',
+        note: 'da ART Sync',
+        actionId: a.id,
+        createdAt: nowISO(),
+      })
       d.dailyActivities[today] = arr
     })
   }
-  function toKanban(a: ArtSyncAction) {
+  function toKanban(a: ActionItem) {
     update((d) => {
       d.kanban.unshift({
         id: uid(),
         title: a.title,
         column: 'todo',
-        priority: a.priority,
+        priority: a.priority ?? 'med',
         tag: 'art-sync',
         due: a.due,
         createdAt: nowISO(),
@@ -160,7 +222,11 @@ export default function ArtSyncView() {
   }
 
   const syncDates = Object.keys(data.artSyncs).sort().reverse()
-  const reported = points.filter((p) => p.reported).length
+  const reportable = points.length + openRisks.length
+  const reported =
+    points.filter((p) => p.reported).length +
+    openRisks.filter((r) => reportedRiskIds.has(r.id)).length
+  const hasContent = !!sync || actions.length > 0
 
   return (
     <div>
@@ -176,7 +242,10 @@ export default function ArtSyncView() {
               onChange={(e) => setDate(e.target.value)}
               className="h-9 w-40"
             />
-            <CopyButton text={buildSyncText(sync, date)} disabled={!sync} />
+            <CopyButton
+              text={buildSyncText(sync, date, openRisks, actions)}
+              disabled={!hasContent && openRisks.length === 0}
+            />
           </>
         }
       />
@@ -207,13 +276,62 @@ export default function ArtSyncView() {
           <div className="mb-4 flex items-center gap-2">
             <IconTrain width={16} height={16} />
             <h3 className="text-sm font-semibold">Da riportare · {fmtDate(date)}</h3>
-            <Badge color={reported === points.length && points.length > 0 ? 'success' : 'neutral'}>
-              {reported}/{points.length} riportati
+            <Badge
+              color={reported === reportable && reportable > 0 ? 'success' : 'neutral'}
+            >
+              {reported}/{reportable} riportati
             </Badge>
           </div>
 
           <div className="space-y-5">
             {ART_CATEGORIES.map((cat) => {
+              if (cat.key === 'risk') {
+                return (
+                  <div key={cat.key}>
+                    <div className="mb-1.5 flex items-center gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
+                        {cat.label}
+                      </span>
+                      <span className="text-[11px] text-[var(--color-muted)]">
+                        registro persistente — resta finché non è Resolved
+                      </span>
+                      {resolvedRisks.length > 0 && (
+                        <button
+                          onClick={() => setShowResolved((v) => !v)}
+                          className="ml-auto text-[11px] text-[var(--color-muted)] hover:text-[var(--color-fg)]"
+                        >
+                          {showResolved ? 'nascondi' : 'mostra'} {resolvedRisks.length} risolti
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      {openRisks.map((r) => (
+                        <RiskRow
+                          key={r.id}
+                          risk={r}
+                          reported={reportedRiskIds.has(r.id)}
+                          onToggleReported={() => toggleRiskReported(r.id)}
+                          onPatch={(p) => patchRisk(r.id, p)}
+                          onRemove={() => removeRisk(r.id)}
+                        />
+                      ))}
+                      {showResolved &&
+                        resolvedRisks.map((r) => (
+                          <RiskRow
+                            key={r.id}
+                            risk={r}
+                            resolved
+                            reported={reportedRiskIds.has(r.id)}
+                            onToggleReported={() => toggleRiskReported(r.id)}
+                            onPatch={(p) => patchRisk(r.id, p)}
+                            onRemove={() => removeRisk(r.id)}
+                          />
+                        ))}
+                      <AddLine onAdd={addRisk} />
+                    </div>
+                  </div>
+                )
+              }
               const pts = points.filter((p) => p.category === cat.key)
               return (
                 <div key={cat.key}>
@@ -261,27 +379,6 @@ export default function ArtSyncView() {
                               p.reported && 'text-[var(--color-muted)]',
                             )}
                           />
-                          {cat.key === 'risk' && (
-                            <>
-                              {p.roam && <Badge color={ROAM_COLOR[p.roam]}>{p.roam}</Badge>}
-                              <Select
-                                value={p.roam ?? ''}
-                                onChange={(e) =>
-                                  patchPoint(p.id, {
-                                    roam: (e.target.value || undefined) as RoamStatus | undefined,
-                                  })
-                                }
-                                className="h-7 text-xs"
-                              >
-                                <option value="">ROAM…</option>
-                                {ROAM_STATUSES.map((r) => (
-                                  <option key={r.key} value={r.key}>
-                                    {r.label}
-                                  </option>
-                                ))}
-                              </Select>
-                            </>
-                          )}
                           <button
                             onClick={() => removePoint(p.id)}
                             className="text-[var(--color-muted)] opacity-0 transition-opacity hover:text-[var(--color-danger)] group-hover:opacity-100"
@@ -305,12 +402,18 @@ export default function ArtSyncView() {
           </div>
         </Card>
 
-        {/* Action in uscita */}
+        {/* Action in uscita — vive nello store unificato (Decisioni & Azioni) */}
         <Card className="h-fit p-5">
           <div className="mb-3 flex items-center gap-2">
             <h3 className="text-sm font-semibold">Action in uscita</h3>
-            <Badge color="neutral">{actions.filter((a) => !a.done).length} aperte</Badge>
+            <Badge color="neutral">
+              {actions.filter((a) => a.status !== 'done').length} aperte
+            </Badge>
           </div>
+          <p className="mb-3 text-[11px] text-[var(--color-muted)]">
+            Le action vivono in «Decisioni & Azioni» (tag ART Sync): un solo stato,
+            ovunque le guardi.
+          </p>
           <div className="flex gap-2">
             <Input
               value={actionText}
@@ -329,80 +432,95 @@ export default function ArtSyncView() {
             </p>
           ) : (
             <div className="mt-3 space-y-2">
-              {actions.map((a) => (
-                <div
-                  key={a.id}
-                  className="group rounded-[calc(var(--radius)-0.25rem)] border px-2.5 py-2"
-                >
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => patchAction(a.id, { done: !a.done })}
-                      className={cn(
-                        'grid h-5 w-5 shrink-0 place-items-center rounded-md border',
-                        a.done
-                          ? 'border-[var(--color-success)] bg-[var(--color-success)] text-white'
-                          : 'text-transparent',
-                      )}
-                    >
-                      <IconCheck width={13} height={13} />
-                    </button>
-                    <input
-                      value={a.title}
-                      onChange={(e) => patchAction(a.id, { title: e.target.value })}
-                      className={cn(
-                        'flex-1 bg-transparent text-sm outline-none',
-                        a.done && 'text-[var(--color-muted)] line-through',
-                      )}
-                    />
-                    <Badge color={PRIO_META[a.priority].color}>
-                      {PRIO_META[a.priority].label}
-                    </Badge>
-                    <button
-                      onClick={() => removeAction(a.id)}
-                      className="text-[var(--color-muted)] opacity-0 transition-opacity hover:text-[var(--color-danger)] group-hover:opacity-100"
-                    >
-                      <IconTrash width={14} height={14} />
-                    </button>
+              {actions.map((a) => {
+                const done = a.status === 'done'
+                return (
+                  <div
+                    key={a.id}
+                    className="group rounded-[calc(var(--radius)-0.25rem)] border px-2.5 py-2"
+                  >
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() =>
+                          patchAction(a.id, { status: done ? 'todo' : 'done' })
+                        }
+                        className={cn(
+                          'grid h-5 w-5 shrink-0 place-items-center rounded-md border',
+                          done
+                            ? 'border-[var(--color-success)] bg-[var(--color-success)] text-white'
+                            : 'text-transparent',
+                        )}
+                      >
+                        <IconCheck width={13} height={13} />
+                      </button>
+                      <input
+                        value={a.title}
+                        onChange={(e) => patchAction(a.id, { title: e.target.value })}
+                        className={cn(
+                          'flex-1 bg-transparent text-sm outline-none',
+                          done && 'text-[var(--color-muted)] line-through',
+                        )}
+                      />
+                      <Badge color={PRIO_META[a.priority ?? 'med'].color}>
+                        {PRIO_META[a.priority ?? 'med'].label}
+                      </Badge>
+                      <button
+                        onClick={() => removeAction(a.id)}
+                        className="text-[var(--color-muted)] opacity-0 transition-opacity hover:text-[var(--color-danger)] group-hover:opacity-100"
+                      >
+                        <IconTrash width={14} height={14} />
+                      </button>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-7">
+                      <input
+                        value={a.owner ?? ''}
+                        onChange={(e) => patchAction(a.id, { owner: e.target.value })}
+                        placeholder="owner"
+                        className="h-7 w-24 rounded border bg-transparent px-2 text-xs outline-none focus:border-[var(--color-primary)]"
+                      />
+                      <input
+                        type="date"
+                        value={a.due ?? ''}
+                        onChange={(e) => patchAction(a.id, { due: e.target.value })}
+                        className="h-7 rounded border bg-transparent px-2 text-xs outline-none focus:border-[var(--color-primary)]"
+                      />
+                      <Select
+                        value={a.priority ?? 'med'}
+                        onChange={(e) =>
+                          patchAction(a.id, { priority: e.target.value as Priority })
+                        }
+                        className="h-7 text-xs"
+                      >
+                        <option value="high">Alta</option>
+                        <option value="med">Media</option>
+                        <option value="low">Bassa</option>
+                      </Select>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => toDiario(a)}
+                        title="Portala nel Diario di oggi (stato collegato)"
+                      >
+                        → Diario
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => toKanban(a)}
+                        title="Crea una card nel Kanban"
+                      >
+                        <IconBoard width={13} height={13} /> Kanban
+                      </Button>
+                    </div>
                   </div>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-7">
-                    <input
-                      value={a.owner ?? ''}
-                      onChange={(e) => patchAction(a.id, { owner: e.target.value })}
-                      placeholder="owner"
-                      className="h-7 w-24 rounded border bg-transparent px-2 text-xs outline-none focus:border-[var(--color-primary)]"
-                    />
-                    <input
-                      type="date"
-                      value={a.due ?? ''}
-                      onChange={(e) => patchAction(a.id, { due: e.target.value })}
-                      className="h-7 rounded border bg-transparent px-2 text-xs outline-none focus:border-[var(--color-primary)]"
-                    />
-                    <Select
-                      value={a.priority}
-                      onChange={(e) =>
-                        patchAction(a.id, { priority: e.target.value as Priority })
-                      }
-                      className="h-7 text-xs"
-                    >
-                      <option value="high">Alta</option>
-                      <option value="med">Media</option>
-                      <option value="low">Bassa</option>
-                    </Select>
-                    <Button size="sm" variant="ghost" onClick={() => toDiario(a)} title="Portala nel Diario di oggi">
-                      → Diario
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => toKanban(a)} title="Crea una card nel Kanban">
-                      <IconBoard width={13} height={13} /> Kanban
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </Card>
       </div>
 
-      {!sync && (
+      {!hasContent && (
         <div className="mt-5">
           <EmptyState
             icon={<IconTrain width={28} height={28} />}
@@ -415,11 +533,99 @@ export default function ArtSyncView() {
   )
 }
 
+function RiskRow({
+  risk,
+  resolved,
+  reported,
+  onToggleReported,
+  onPatch,
+  onRemove,
+}: {
+  risk: RoamRisk
+  resolved?: boolean
+  reported: boolean
+  onToggleReported: () => void
+  onPatch: (p: Partial<RoamRisk>) => void
+  onRemove: () => void
+}) {
+  const age = ageInDays(risk.createdAt)
+  return (
+    <div
+      className={cn(
+        'group rounded-[calc(var(--radius)-0.25rem)] border px-2.5 py-1.5',
+        resolved && 'opacity-50',
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onToggleReported}
+          title="Segna come riportato in questo sync"
+          className={cn(
+            'grid h-5 w-5 shrink-0 place-items-center rounded-md border',
+            reported
+              ? 'border-[var(--color-success)] bg-[var(--color-success)] text-white'
+              : 'text-transparent',
+          )}
+        >
+          <IconCheck width={13} height={13} />
+        </button>
+        <input
+          value={risk.title}
+          onChange={(e) => onPatch({ title: e.target.value })}
+          className={cn(
+            'flex-1 bg-transparent text-sm outline-none',
+            resolved && 'line-through',
+          )}
+        />
+        {age >= 1 && !resolved && (
+          <span className="shrink-0 text-[10px] text-[var(--color-muted)]">
+            aperto da {age}g
+          </span>
+        )}
+        {risk.roam && <Badge color={ROAM_COLOR[risk.roam]}>{risk.roam}</Badge>}
+        <Select
+          value={risk.roam ?? ''}
+          onChange={(e) =>
+            onPatch({ roam: (e.target.value || undefined) as RoamStatus | undefined })
+          }
+          className="h-7 text-xs"
+        >
+          <option value="">ROAM…</option>
+          {ROAM_STATUSES.map((r) => (
+            <option key={r.key} value={r.key}>
+              {r.label}
+            </option>
+          ))}
+        </Select>
+        <button
+          onClick={onRemove}
+          className="text-[var(--color-muted)] opacity-0 transition-opacity hover:text-[var(--color-danger)] group-hover:opacity-100"
+        >
+          <IconTrash width={14} height={14} />
+        </button>
+      </div>
+      <div className="ml-7 flex items-center gap-2">
+        <input
+          value={risk.owner ?? ''}
+          onChange={(e) => onPatch({ owner: e.target.value })}
+          placeholder="owner"
+          className="w-28 bg-transparent py-0.5 text-xs text-[var(--color-muted)] outline-none placeholder:text-[var(--color-muted)]/50 focus:text-[var(--color-fg)]"
+        />
+        <input
+          value={risk.note ?? ''}
+          onChange={(e) => onPatch({ note: e.target.value })}
+          placeholder="+ nota"
+          className="flex-1 bg-transparent py-0.5 text-xs text-[var(--color-muted)] outline-none placeholder:text-[var(--color-muted)]/50 focus:text-[var(--color-fg)]"
+        />
+      </div>
+    </div>
+  )
+}
+
 type ArtSyncPointPatch = {
   text: string
   note: string
   reported: boolean
-  roam: RoamStatus | undefined
 }
 
 function AddLine({ onAdd }: { onAdd: (t: string) => void }) {
@@ -440,23 +646,40 @@ function AddLine({ onAdd }: { onAdd: (t: string) => void }) {
   )
 }
 
-function buildSyncText(sync: ArtSync | undefined, date: string): string {
-  if (!sync) return ''
+function buildSyncText(
+  sync: ArtSync | undefined,
+  date: string,
+  openRisks: RoamRisk[],
+  actions: ActionItem[],
+): string {
   const L: string[] = [`ART Sync — ${fmtDate(date)}`, '']
   ART_CATEGORIES.forEach((cat) => {
-    const pts = sync.points.filter((p) => p.category === cat.key)
+    if (cat.key === 'risk') {
+      if (openRisks.length === 0) return
+      L.push('RISCHI (ROAM):')
+      openRisks.forEach((r) => {
+        const parts = []
+        if (r.roam) parts.push(r.roam)
+        if (r.owner) parts.push(r.owner)
+        L.push(
+          `- ${r.title}${parts.length ? ` [${parts.join(' · ')}]` : ''}${r.note ? ` (${r.note})` : ''}`,
+        )
+      })
+      L.push('')
+      return
+    }
+    const pts = (sync?.points ?? []).filter((p) => p.category === cat.key)
     if (pts.length === 0) return
     L.push(`${cat.label.toUpperCase()}:`)
     pts.forEach((p) => {
-      const roam = p.roam ? ` [${p.roam}]` : ''
-      L.push(`- ${p.text}${roam}${p.note ? ` (${p.note})` : ''}`)
+      L.push(`- ${p.text}${p.note ? ` (${p.note})` : ''}`)
     })
     L.push('')
   })
-  if (sync.actions.length) {
+  if (actions.length) {
     L.push('ACTION IN USCITA:')
-    sync.actions.forEach((a) => {
-      const parts = [PRIO_META[a.priority].label]
+    actions.forEach((a) => {
+      const parts = [PRIO_META[a.priority ?? 'med'].label]
       if (a.owner) parts.push(a.owner)
       if (a.due) parts.push(`scad. ${fmtDate(a.due)}`)
       L.push(`- ${a.title} (${parts.join(' · ')})`)

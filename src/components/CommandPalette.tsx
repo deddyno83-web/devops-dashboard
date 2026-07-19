@@ -126,6 +126,7 @@ export function CommandPalette({
               title,
               owner: parsed.owner,
               due: parsed.due,
+              priority: parsed.priority,
               status: 'todo',
               createdAt: nowISO(),
             }),

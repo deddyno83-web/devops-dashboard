@@ -31,9 +31,8 @@ export default function ReportView() {
   const openActions = data.actions
     .filter((a) => a.status !== 'done')
     .sort((a, b) => (daysFromToday(a.due) ?? 9e9) - (daysFromToday(b.due) ?? 9e9))
-  const activeSprint =
-    data.sprints.find((s) => s.status === 'active') ?? data.sprints[0]
-  const openRisks = data.risks.filter((r) => r.status !== 'closed')
+  const activeSprint = data.sprints.find((s) => s.status === 'active')
+  const openRisks = data.roamRisks.filter((r) => r.roam !== 'resolved')
   const openDeps = data.dependencies.filter((x) => x.status !== 'closed')
   const recentDecisions = data.decisions.slice(0, 5)
 
@@ -164,6 +163,7 @@ export default function ReportView() {
           )}
         </Section>
 
+        {data.dora.length > 0 && (
         <Section title="Salute (DORA)">
           {doraAvg === null ? (
             <Dash hint="Nessuna valutazione questa settimana" />
@@ -181,6 +181,7 @@ export default function ReportView() {
             </div>
           )}
         </Section>
+        )}
 
         <Section title={`Action item aperti (${openActions.length})`}>
           {openActions.length === 0 ? (
@@ -203,13 +204,14 @@ export default function ReportView() {
         </Section>
 
         {openRisks.length > 0 && (
-          <Section title={`Rischi aperti (${openRisks.length})`}>
+          <Section title={`Rischi aperti — ROAM (${openRisks.length})`}>
             <ul className="space-y-0.5 text-sm">
               {openRisks.map((r) => (
                 <li key={r.id}>
                   {r.title}{' '}
                   <span className="text-[var(--color-muted)]">
-                    ({r.severity === 'high' ? 'alto' : r.severity === 'med' ? 'medio' : 'basso'})
+                    ({r.roam ?? 'da classificare'}
+                    {r.owner ? ` · ${r.owner}` : ''})
                   </span>
                 </li>
               ))}
