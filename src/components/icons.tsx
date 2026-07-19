@@ -160,6 +160,13 @@ export const IconPrint = (p: IconProps) => (
   </svg>
 )
 
+export const IconMap = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M9 4 3 6.2v13.6L9 17.6l6 2.2 6-2.2V4l-6 2.2z" />
+    <path d="M9 4v13.6M15 6.2v13.6" />
+  </svg>
+)
+
 export const IconTrain = (p: IconProps) => (
   <svg {...base(p)}>
     <rect x="5" y="3" width="14" height="13" rx="3" />

@@ -8,6 +8,7 @@ export type GuideKey =
   | 'artsync'
   | 'kanban'
   | 'dependencies'
+  | 'roadmap'
   | 'team'
   | 'sprint'
   | 'decisions'
@@ -154,6 +155,33 @@ const GUIDES: Record<GuideKey, Guide> = {
     ],
     cadence: 'Rivedi le aperte ogni giorno · sollecita le critiche prima che scadano.',
   },
+  roadmap: {
+    title: 'Roadmap DevOps',
+    intro:
+      'La tua direzione tecnica come DevOps manager: iniziative (non task) su tre orizzonti Now/Next/Later. Niente date finte: l’impegno cresce man mano che l’orizzonte si avvicina.',
+    sections: [
+      {
+        title: 'Come si usa',
+        items: [
+          'Tre colonne: «Adesso» (in lavorazione / prossime settimane), «Prossimo» (prossimo trimestre o PI), «Più avanti» (visione, senza impegno).',
+          'Aggiungi un’iniziativa con «+ aggiungi e Invio» o col pulsante; trascina tra le colonne quando le priorità cambiano.',
+          'Ogni iniziativa ha area (CI/CD, Observability, Security, FinOps…), stato e target indicativo (es. Q4 2026).',
+          '«Kanban» su un’iniziativa crea la card operativa e la mette In corso: la roadmap dice il perché, il Kanban il cosa questa settimana.',
+          'Le iniziative «Adesso» compaiono anche nel Report.',
+        ],
+      },
+      {
+        title: 'Buone pratiche',
+        items: [
+          'Tieni «Adesso» a massimo 3-4 iniziative attive: una roadmap dove è tutto «adesso» non è una roadmap.',
+          'Rivedila una volta al mese e a ogni PI planning: promuovi da Later → Next → Now, e non aver paura di retrocedere.',
+          '«Più avanti» è una lista di intenzioni, non di promesse: lì la vaghezza è una funzionalità.',
+          'Ogni iniziativa dovrebbe dire il valore atteso, non solo il titolo tecnico.',
+        ],
+      },
+    ],
+    cadence: 'Review mensile · riallineamento a ogni PI planning.',
+  },
   team: {
     title: 'Team & 1:1',
     intro:
@@ -258,6 +286,8 @@ const GUIDES: Record<GuideKey, Guide> = {
           'È un’anteprima generata in automatico da tutte le altre sezioni: non si compila a mano.',
           '«Stampa / Salva PDF» → nella finestra di stampa scegli «Salva come PDF» come stampante.',
           'In stampa spariscono sidebar e pulsanti: resta solo il foglio pulito.',
+          'Tab «Chiusura settimana»: il venerdì l’app ti mostra i numeri della settimana (attività, card, dipendenze, rischi, cycle time) — tu aggiungi «cosa è andato bene» e «cosa migliorare» e chiudi. La chiusura finisce nel Report.',
+          'Il «cosa migliorare» ha «→ Crea action item»: la retro senza azione è solo uno sfogo.',
         ],
       },
       {

@@ -186,6 +186,32 @@ export default function KanbanView() {
   const wip = data.kanban.filter((c) => c.column === 'doing').length
   const filtersActive = !!(fText || fTag || fPriority || overdueOnly)
 
+  // Flow metrics — derived from card timestamps, zero input.
+  const doneCards = data.kanban.filter((c) => c.column === 'done')
+  const cycleTimes = doneCards
+    .map(
+      (c) =>
+        (new Date(c.updatedAt).getTime() - new Date(c.createdAt).getTime()) /
+        86400000,
+    )
+    .filter((n) => n >= 0)
+  const avgCycle = cycleTimes.length
+    ? cycleTimes.reduce((a, b) => a + b, 0) / cycleTimes.length
+    : null
+  const wipCards = data.kanban.filter(
+    (c) => c.column === 'doing' || c.column === 'blocked',
+  )
+  const wipAges = wipCards.map((c) => ageInDays(c.updatedAt))
+  const avgWipAge = wipAges.length
+    ? wipAges.reduce((a, b) => a + b, 0) / wipAges.length
+    : null
+  const oldestWip = wipCards.length
+    ? [...wipCards].sort(
+        (a, b) => ageInDays(b.updatedAt) - ageInDays(a.updatedAt),
+      )[0]
+    : null
+  const fmtDays = (n: number) => (n < 1 ? '<1 g' : `${n.toFixed(1)} g`)
+
   function matches(c: KanbanCard): boolean {
     if (fText && !`${c.title} ${c.notes ?? ''} ${c.tag ?? ''}`.toLowerCase().includes(fText.toLowerCase())) return false
     if (fTag && c.tag !== fTag) return false
@@ -235,6 +261,42 @@ export default function KanbanView() {
           </div>
         ))}
       </div>
+
+      {/* Flow metrics strip */}
+      {(doneCards.length > 0 || wipCards.length > 0) && (
+        <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-1 rounded-[var(--radius)] border bg-[var(--color-surface)] px-3.5 py-2 text-xs text-[var(--color-muted)]">
+          <span className="font-semibold text-[var(--color-fg)]">Flusso</span>
+          {avgCycle !== null && (
+            <span>
+              Cycle time medio:{' '}
+              <strong className="text-[var(--color-fg)]">{fmtDays(avgCycle)}</strong>{' '}
+              ({doneCards.length} fatte)
+            </span>
+          )}
+          {avgWipAge !== null && (
+            <span>
+              Età media in corso:{' '}
+              <strong
+                className={
+                  avgWipAge >= 7
+                    ? 'text-[var(--color-danger)]'
+                    : 'text-[var(--color-fg)]'
+                }
+              >
+                {fmtDays(avgWipAge)}
+              </strong>
+            </span>
+          )}
+          {oldestWip && ageInDays(oldestWip.updatedAt) >= 3 && (
+            <span className="truncate">
+              Più ferma: «{oldestWip.title}» da{' '}
+              <strong className="text-[var(--color-fg)]">
+                {ageInDays(oldestWip.updatedAt)}g
+              </strong>
+            </span>
+          )}
+        </div>
+      )}
 
       {/* View tabs */}
       <div className="mb-3 inline-flex rounded-[calc(var(--radius)-0.2rem)] border bg-[var(--color-surface-2)]/50 p-1 text-sm">

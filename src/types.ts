@@ -280,6 +280,52 @@ export interface RoamRisk {
   updatedAt: string
 }
 
+/* ------------------------- Weekly close (retrospettiva) -------------------- */
+export interface WeeklyReviewStats {
+  activitiesDone: number
+  activitiesCarried: number
+  kanbanDone: number
+  depsClosed: number
+  risksResolved: number
+  avgCycleTimeDays?: number
+}
+
+/** Friday ritual: numbers are snapshotted at close time so history stays stable. */
+export interface WeeklyReview {
+  weekOf: string // Monday ISO of the closed week
+  wentWell: string
+  toImprove: string
+  notes: string
+  stats: WeeklyReviewStats
+  closedAt: string
+}
+
+/* ------------------------------ DevOps roadmap ----------------------------- */
+export type RoadmapHorizon = 'now' | 'next' | 'later'
+export type RoadmapStatus = 'planned' | 'active' | 'done'
+
+export interface RoadmapItem {
+  id: ID
+  title: string
+  description?: string
+  area?: string // CI/CD, Observability, Security, FinOps…
+  horizon: RoadmapHorizon
+  status: RoadmapStatus
+  target?: string // free text, e.g. "Q4 2026"
+  createdAt: string
+  updatedAt: string
+}
+
+export const ROADMAP_HORIZONS: {
+  key: RoadmapHorizon
+  label: string
+  hint: string
+}[] = [
+  { key: 'now', label: 'Adesso', hint: 'in lavorazione / prossime settimane' },
+  { key: 'next', label: 'Prossimo', hint: 'prossimo trimestre / PI' },
+  { key: 'later', label: 'Più avanti', hint: 'visione, senza impegno di data' },
+]
+
 export type ThemeMode = 'light' | 'dark' | 'system'
 
 export interface AppData {
@@ -304,6 +350,8 @@ export interface AppData {
   dependencies: Dependency[]
   artSyncs: Record<string, ArtSync>
   roamRisks: RoamRisk[]
+  weeklyReviews: Record<string, WeeklyReview>
+  roadmap: RoadmapItem[]
   settings: { theme: ThemeMode; managerName?: string }
   updatedAt: string
 }
@@ -331,6 +379,8 @@ export function defaultData(): AppData {
     dependencies: [],
     artSyncs: {},
     roamRisks: [],
+    weeklyReviews: {},
+    roadmap: [],
     settings: { theme: 'system' },
     updatedAt: new Date().toISOString(),
   }

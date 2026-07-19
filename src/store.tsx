@@ -304,6 +304,8 @@ function migrate(d: Partial<AppData>): AppData {
     dependencies: d.dependencies ?? base.dependencies,
     artSyncs,
     roamRisks,
+    weeklyReviews: d.weeklyReviews ?? base.weeklyReviews,
+    roadmap: d.roadmap ?? base.roadmap,
     settings: { ...base.settings, ...(d.settings ?? {}) },
   }
 }

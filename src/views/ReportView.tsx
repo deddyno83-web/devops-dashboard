@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { useStore } from '../store'
 import { Button } from '../components/ui'
 import { IconPrint } from '../components/icons'
 import { GuideButton } from '../components/Guide'
+import WeekClose from './WeekClose'
 import {
   todayISO,
   fmtDate,
@@ -15,6 +17,7 @@ import { KANBAN_COLUMNS, DORA_METRICS, type DoraEntry } from '../types'
 
 export default function ReportView() {
   const { data } = useStore()
+  const [tab, setTab] = useState<'report' | 'week'>('report')
   const today = todayISO()
   const dailyTop = (data.dailyTop[today] ?? []).filter(Boolean)
   const weekTop = (data.weeklyFocus[mondayOf()] ?? data.weekTop ?? []).filter(
@@ -42,24 +45,65 @@ export default function ReportView() {
     ? (dora.leadTime + dora.deployFreq + dora.mttr + dora.changeFail) / 4
     : null
 
+  const lastReview = Object.values(data.weeklyReviews).sort((a, b) =>
+    b.weekOf.localeCompare(a.weekOf),
+  )[0]
+  const roadmapNow = data.roadmap.filter(
+    (r) => r.horizon === 'now' && r.status !== 'done',
+  )
+
   return (
     <div>
-      <div className="mb-5 flex items-end justify-between gap-3" data-noprint>
+      <div className="mb-4 flex items-end justify-between gap-3" data-noprint>
         <div>
           <h2 className="text-lg font-semibold tracking-tight">Report</h2>
           <p className="mt-0.5 text-sm text-[var(--color-muted)]">
-            Anteprima del resoconto. Usa «Stampa / Salva PDF» e scegli «Salva come
-            PDF» come stampante.
+            {tab === 'report'
+              ? 'Anteprima del resoconto. Usa «Stampa / Salva PDF» e scegli «Salva come PDF» come stampante.'
+              : 'Il venerdì: guarda i numeri della settimana, scrivi due righe di retro, chiudi.'}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <GuideButton section="report" />
-          <Button variant="primary" onClick={() => window.print()}>
-            <IconPrint width={16} height={16} /> Stampa / Salva PDF
-          </Button>
+          {tab === 'report' && (
+            <Button variant="primary" onClick={() => window.print()}>
+              <IconPrint width={16} height={16} /> Stampa / Salva PDF
+            </Button>
+          )}
         </div>
       </div>
 
+      <div
+        className="mb-4 inline-flex rounded-[calc(var(--radius)-0.2rem)] border bg-[var(--color-surface-2)]/50 p-1 text-sm"
+        data-noprint
+      >
+        <button
+          onClick={() => setTab('report')}
+          className={
+            'rounded-[calc(var(--radius)-0.35rem)] px-3 py-1.5 font-medium transition-colors ' +
+            (tab === 'report'
+              ? 'bg-[var(--color-surface)] shadow-sm'
+              : 'text-[var(--color-muted)] hover:text-[var(--color-fg)]')
+          }
+        >
+          Report
+        </button>
+        <button
+          onClick={() => setTab('week')}
+          className={
+            'rounded-[calc(var(--radius)-0.35rem)] px-3 py-1.5 font-medium transition-colors ' +
+            (tab === 'week'
+              ? 'bg-[var(--color-surface)] shadow-sm'
+              : 'text-[var(--color-muted)] hover:text-[var(--color-fg)]')
+          }
+        >
+          Chiusura settimana ({Object.keys(data.weeklyReviews).length})
+        </button>
+      </div>
+
+      {tab === 'week' && <WeekClose />}
+
+      {tab === 'report' && (
       <div className="report-print mx-auto max-w-3xl rounded-[var(--radius)] border bg-[var(--color-surface)] p-8">
         <header className="mb-6 border-b pb-4">
           <h1 className="text-xl font-bold">Report DevOps Manager</h1>
@@ -237,6 +281,69 @@ export default function ReportView() {
           </Section>
         )}
 
+        {roadmapNow.length > 0 && (
+          <Section title={`Roadmap — adesso (${roadmapNow.length})`}>
+            <ul className="space-y-0.5 text-sm">
+              {roadmapNow.map((r) => (
+                <li key={r.id} className="flex justify-between gap-3">
+                  <span>
+                    {r.title}
+                    {r.area ? ` · ${r.area}` : ''}
+                  </span>
+                  <span className="shrink-0 text-[var(--color-muted)]">
+                    {r.status === 'active' ? 'in corso' : r.target ?? ''}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        )}
+
+        {lastReview && (
+          <Section title={`Chiusura settimana · ${weekLabel(lastReview.weekOf)}`}>
+            <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
+              <span>
+                Attività chiuse: <strong>{lastReview.stats.activitiesDone}</strong>
+              </span>
+              <span>
+                Riportate: <strong>{lastReview.stats.activitiesCarried}</strong>
+              </span>
+              <span>
+                Card: <strong>{lastReview.stats.kanbanDone}</strong>
+              </span>
+              <span>
+                Dipendenze chiuse: <strong>{lastReview.stats.depsClosed}</strong>
+              </span>
+              <span>
+                Rischi risolti: <strong>{lastReview.stats.risksResolved}</strong>
+              </span>
+              {lastReview.stats.avgCycleTimeDays !== undefined && (
+                <span>
+                  Cycle time:{' '}
+                  <strong>
+                    {lastReview.stats.avgCycleTimeDays < 1
+                      ? '<1'
+                      : lastReview.stats.avgCycleTimeDays.toFixed(1)}{' '}
+                    g
+                  </strong>
+                </span>
+              )}
+            </div>
+            {lastReview.wentWell && (
+              <p className="mt-1 text-sm">
+                <span className="font-medium">Bene: </span>
+                {lastReview.wentWell}
+              </p>
+            )}
+            {lastReview.toImprove && (
+              <p className="text-sm">
+                <span className="font-medium">Migliorare: </span>
+                {lastReview.toImprove}
+              </p>
+            )}
+          </Section>
+        )}
+
         {recentDecisions.length > 0 && (
           <Section title="Decisioni recenti">
             <ul className="space-y-0.5 text-sm">
@@ -252,6 +359,7 @@ export default function ReportView() {
           </Section>
         )}
       </div>
+      )}
     </div>
   )
 }

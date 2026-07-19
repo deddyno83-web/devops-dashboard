@@ -19,6 +19,7 @@ import {
   IconSun,
   IconLink,
   IconTrain,
+  IconMap,
 } from './components/icons'
 import DailyView from './views/DailyView'
 import KanbanView from './views/KanbanView'
@@ -29,6 +30,7 @@ import ReportView from './views/ReportView'
 import StandupView from './views/StandupView'
 import DependenciesView from './views/DependenciesView'
 import ArtSyncView from './views/ArtSyncView'
+import RoadmapView from './views/RoadmapView'
 import { CommandPalette } from './components/CommandPalette'
 
 type Tab =
@@ -37,6 +39,7 @@ type Tab =
   | 'artsync'
   | 'kanban'
   | 'dependencies'
+  | 'roadmap'
   | 'team'
   | 'sprint'
   | 'decisions'
@@ -48,6 +51,7 @@ const NAV: { key: Tab; label: string; icon: typeof IconHome }[] = [
   { key: 'artsync', label: 'ART Sync', icon: IconTrain },
   { key: 'kanban', label: 'Kanban', icon: IconBoard },
   { key: 'dependencies', label: 'Dipendenze', icon: IconLink },
+  { key: 'roadmap', label: 'Roadmap', icon: IconMap },
   { key: 'team', label: 'Team & 1:1', icon: IconUsers },
   // Sprint & Salute disabilitata per ora (riattivabile aggiungendo questa voce):
   // { key: 'sprint', label: 'Sprint & Salute', icon: IconActivity },
@@ -172,6 +176,7 @@ function Shell() {
           {tab === 'artsync' && <ArtSyncView />}
           {tab === 'kanban' && <KanbanView />}
           {tab === 'dependencies' && <DependenciesView />}
+          {tab === 'roadmap' && <RoadmapView />}
           {tab === 'team' && <TeamView />}
           {tab === 'sprint' && <SprintHealthView />}
           {tab === 'decisions' && <DecisionsView />}
