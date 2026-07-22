@@ -197,6 +197,7 @@ export interface Activity {
   text: string
   status: ActivityStatus
   note?: string
+  owner?: string // assigned team member (for monitoring / delegation)
   createdAt: string
   carryCount?: number // times carried over from previous days
   actionId?: ID // linked ActionItem — completing the activity completes the action

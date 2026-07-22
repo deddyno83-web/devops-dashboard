@@ -26,6 +26,7 @@ import {
 import type { ActivityStatus } from '../types'
 import { PageHeader } from '../components/ui'
 import { GuideButton } from '../components/Guide'
+import { RowMenu, AssigneePicker } from '../components/RowMenu'
 import { KANBAN_COLUMNS } from '../types'
 
 export default function DailyView() {
@@ -112,15 +113,91 @@ export default function DailyView() {
   const activities = data.dailyActivities[today] ?? []
   const [actText, setActText] = useState('')
 
-  function addActivity() {
-    const t = actText.trim()
-    if (!t) return
+  const plusDaysISO = (n: number) => {
+    const d = new Date(today + 'T00:00:00')
+    d.setDate(d.getDate() + n)
+    const tz = d.getTimezoneOffset() * 60000
+    return new Date(d.getTime() - tz).toISOString().slice(0, 10)
+  }
+
+  function addActivityLines(raw: string) {
+    const lines = raw
+      .split(/\r?\n/)
+      .map((l) => l.replace(/^[\s\-*•\d.)]+/, '').trim())
+      .filter(Boolean)
+    if (lines.length === 0) return
     update((d) => {
       const arr = [...(d.dailyActivities[today] ?? [])]
-      arr.push({ id: uid(), text: t, status: 'doing', createdAt: nowISO() })
+      lines.forEach((l) =>
+        arr.push({ id: uid(), text: l, status: 'todo', createdAt: nowISO() }),
+      )
       d.dailyActivities[today] = arr
     })
+  }
+
+  function addActivity() {
+    if (!actText.trim()) return
+    addActivityLines(actText)
     setActText('')
+  }
+
+  function assignActivity(id: string, owner: string | undefined) {
+    update((d) => {
+      const a = (d.dailyActivities[today] ?? []).find((x) => x.id === id)
+      if (a) a.owner = owner
+    })
+  }
+
+  function activityToKanban(a: (typeof activities)[number]) {
+    update((d) => {
+      d.kanban.unshift({
+        id: uid(),
+        title: a.text,
+        notes: [a.note, a.owner ? `Assegnata a: ${a.owner}` : '']
+          .filter(Boolean)
+          .join('\n') || undefined,
+        column: 'todo',
+        priority: 'med',
+        createdAt: nowISO(),
+        updatedAt: nowISO(),
+      })
+    })
+  }
+
+  function activityToArtSync(a: (typeof activities)[number]) {
+    const tmr = plusDaysISO(1)
+    update((d) => {
+      if (!d.artSyncs[tmr])
+        d.artSyncs[tmr] = { date: tmr, points: [], actions: [], createdAt: nowISO() }
+      d.artSyncs[tmr].points.push({
+        id: uid(),
+        category: 'progress',
+        text: a.owner ? `${a.text} (→ ${a.owner})` : a.text,
+        note: a.note,
+        reported: false,
+      })
+    })
+  }
+
+  function moveActivityToTomorrow(a: (typeof activities)[number]) {
+    const tmr = plusDaysISO(1)
+    update((d) => {
+      d.dailyActivities[today] = (d.dailyActivities[today] ?? []).filter(
+        (x) => x.id !== a.id,
+      )
+      const arr = [...(d.dailyActivities[tmr] ?? [])]
+      arr.push({
+        id: uid(),
+        text: a.text,
+        status: 'todo',
+        note: a.note,
+        owner: a.owner,
+        actionId: a.actionId,
+        carryCount: (a.carryCount ?? 0) + 1,
+        createdAt: nowISO(),
+      })
+      d.dailyActivities[tmr] = arr
+    })
   }
 
   function cycleActivity(id: string) {
@@ -452,7 +529,14 @@ export default function DailyView() {
                 value={actText}
                 onChange={(e) => setActText(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && addActivity()}
-                placeholder="Cosa stai facendo / hai fatto?"
+                onPaste={(e) => {
+                  const text = e.clipboardData.getData('text')
+                  if (/\r?\n/.test(text.trim())) {
+                    e.preventDefault()
+                    addActivityLines(text)
+                  }
+                }}
+                placeholder="Aggiungi una richiesta… (incolla più righe per aggiungerne tante)"
                 className="h-9 flex-1 rounded-[calc(var(--radius)-0.25rem)] border bg-[var(--color-bg)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-primary)]/40"
               />
               <Button variant="primary" onClick={addActivity}>
@@ -505,27 +589,39 @@ export default function DailyView() {
                         {(a.carryCount ?? 0) + 1}° giorno
                       </Badge>
                     )}
+                    <AssigneePicker
+                      owner={a.owner}
+                      people={data.people}
+                      onAssign={(name) => assignActivity(a.id, name)}
+                    />
                     <span className="shrink-0 text-[11px] text-[var(--color-muted)]">
                       {fmtTime(a.createdAt)}
                     </span>
-                    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => promoteToPriority(a.text)}
-                        title="Promuovi a priorità del giorno"
-                      >
-                        ↑ priorità
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => removeActivity(a.id)}
-                        aria-label="Elimina"
-                      >
-                        <IconTrash width={14} height={14} />
-                      </Button>
-                    </div>
+                    <RowMenu
+                      items={[
+                        {
+                          label: '↑ Priorità del giorno',
+                          onClick: () => promoteToPriority(a.text),
+                        },
+                        {
+                          label: '→ Card Kanban',
+                          onClick: () => activityToKanban(a),
+                        },
+                        {
+                          label: '→ Riporta in ART Sync (domani)',
+                          onClick: () => activityToArtSync(a),
+                        },
+                        {
+                          label: '→ Sposta a domani',
+                          onClick: () => moveActivityToTomorrow(a),
+                        },
+                        {
+                          label: 'Elimina',
+                          onClick: () => removeActivity(a.id),
+                          danger: true,
+                        },
+                      ]}
+                    />
                   </div>
                   <input
                     value={a.note ?? ''}

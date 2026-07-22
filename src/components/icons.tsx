@@ -160,6 +160,22 @@ export const IconPrint = (p: IconProps) => (
   </svg>
 )
 
+export const IconDots = (p: IconProps) => (
+  <svg {...base(p)}>
+    <circle cx="12" cy="5" r="1" />
+    <circle cx="12" cy="12" r="1" />
+    <circle cx="12" cy="19" r="1" />
+  </svg>
+)
+
+export const IconUserPlus = (p: IconProps) => (
+  <svg {...base(p)}>
+    <circle cx="9" cy="8" r="3.2" />
+    <path d="M3.5 20a5.5 5.5 0 0 1 11 0" />
+    <path d="M18 8v6M15 11h6" />
+  </svg>
+)
+
 export const IconMap = (p: IconProps) => (
   <svg {...base(p)}>
     <path d="M9 4 3 6.2v13.6L9 17.6l6 2.2 6-2.2V4l-6 2.2z" />
