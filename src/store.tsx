@@ -7,8 +7,15 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import type { AppData, ArtSync, RoamRisk } from './types'
-import { defaultData } from './types'
+import type {
+  AppData,
+  ArtSync,
+  RoamRisk,
+  Stream,
+  SyncSection,
+  InboxItem,
+} from './types'
+import { defaultData, DEFAULT_STREAMS } from './types'
 import { nowISO, mondayOf } from './lib/utils'
 import {
   cacheData,
@@ -191,6 +198,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
 }
 
+function slug(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
 /** Fill in any fields missing from older / imported payloads. */
 function migrate(d: Partial<AppData>): AppData {
   const base = defaultData()
@@ -281,9 +297,78 @@ function migrate(d: Partial<AppData>): AppData {
     artSyncs[date] = { ...s, actions: [] }
   }
 
+  // One-time setup: streams + ART Sync agenda in the user's presentation
+  // format. Only runs when absent, so user edits are never overwritten.
+  const streams: Stream[] =
+    d.streams && d.streams.length
+      ? d.streams
+      : DEFAULT_STREAMS.map((s) => ({ ...s, id: `stream-${slug(s.name)}` }))
+  const streamByName = new Map(streams.map((s) => [s.name.toLowerCase(), s]))
+
+  let syncAgenda: SyncSection[] = d.syncAgenda ?? []
+  if (syncAgenda.length === 0) {
+    const s = (name: string) => streamByName.get(name.toLowerCase())?.id
+    syncAgenda = [
+      { id: 'sec-ccoe', label: 'CCoE', kind: 'stream', streamId: s('CCoE'), order: 0 },
+      { id: 'sec-digital', label: 'Digital CCoE', kind: 'stream', streamId: s('Digital CCoE'), order: 1 },
+      { id: 'sec-internal', label: 'Progress Internal Team', kind: 'stream', streamId: s('Team interno'), order: 2 },
+      { id: 'sec-extdeps', label: 'External Dependencies', kind: 'dependencies', order: 3 },
+      { id: 'sec-extmeet', label: 'External Meeting', kind: 'meeting', order: 4 },
+      { id: 'sec-risks', label: 'Rischi (ROAM)', kind: 'risks', order: 5 },
+    ]
+  }
+
+  // Legacy ART Sync points carry a `category`: map it onto the new sections so
+  // old preparations keep showing up under a sensible heading. Risk points are
+  // left alone — they already live in the ROAM register.
+  const legacySection: Record<string, string> = {
+    progress: 'sec-internal',
+    impediment: 'sec-extdeps',
+    dependency: 'sec-extdeps',
+    scope: 'sec-internal',
+  }
+  const hasSection = new Set(syncAgenda.map((s) => s.id))
+  for (const s of Object.values(artSyncs)) {
+    s.points = (s.points ?? []).map((p) =>
+      p.sectionId || p.category === 'risk'
+        ? p
+        : {
+            ...p,
+            sectionId: hasSection.has(legacySection[p.category])
+              ? legacySection[p.category]
+              : syncAgenda[0]?.id,
+          },
+    )
+  }
+
+  // quickCapture (legacy scratchpad) folds into the unified inbox.
+  let inbox: InboxItem[] = d.inbox ?? []
+  if (!d.inbox && (d.quickCapture ?? []).length) {
+    inbox = (d.quickCapture ?? []).map((n) => ({
+      id: n.id,
+      text: n.text,
+      source: 'idea' as const,
+      createdAt: n.createdAt,
+      triagedAt: n.done ? n.createdAt : undefined,
+      outcome: n.done ? 'Completata' : undefined,
+    }))
+  }
+
+  // Dependencies get linked to a stream when their free-text party matches one.
+  const dependencies = (d.dependencies ?? []).map((x) =>
+    x.streamId
+      ? x
+      : { ...x, streamId: streamByName.get((x.party ?? '').toLowerCase())?.id },
+  )
+
   return {
     ...base,
     ...d,
+    streams,
+    syncAgenda,
+    inbox,
+    externalItems: d.externalItems ?? base.externalItems,
+    dependencies,
     people: d.people ?? base.people,
     kanban: d.kanban ?? base.kanban,
     decisions: d.decisions ?? base.decisions,
@@ -301,7 +386,6 @@ function migrate(d: Partial<AppData>): AppData {
     dora: d.dora ?? base.dora,
     skillList: d.skillList ?? base.skillList,
     dailyLogs: d.dailyLogs ?? base.dailyLogs,
-    dependencies: d.dependencies ?? base.dependencies,
     artSyncs,
     roamRisks,
     weeklyReviews: d.weeklyReviews ?? base.weeklyReviews,

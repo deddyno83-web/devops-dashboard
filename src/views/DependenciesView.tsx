@@ -5,8 +5,11 @@ import {
   type DependencyType,
   type DependencyStatus,
   type Criticality,
+  type ExternalItem,
+  type ExternalItemStatus,
   DEP_TYPES,
   DEP_STATUSES,
+  EXTERNAL_STATUSES,
 } from '../types'
 import {
   Button,
@@ -27,28 +30,33 @@ import {
   IconExternal,
   IconWarn,
   IconX,
+  IconCheck,
 } from '../components/icons'
-import { uid, nowISO, todayISO, fmtDate, relativeDays, ageInDays, daysFromToday, cn } from '../lib/utils'
+import { StreamPicker, StreamDot } from '../components/Stream'
+import {
+  uid,
+  nowISO,
+  fmtDate,
+  relativeDays,
+  ageInDays,
+  daysFromToday,
+  cn,
+} from '../lib/utils'
 import { GuideButton } from '../components/Guide'
 
-const STATUS_META: Record<DependencyStatus, { label: string; color: any }> = {
-  open: { label: 'Aperta', color: 'warning' },
-  waiting: { label: 'In attesa', color: 'neutral' },
-  chased: { label: 'Sollecitata', color: 'primary' },
-  unblocked: { label: 'Sbloccata', color: 'success' },
-  closed: { label: 'Chiusa', color: 'neutral' },
-}
 const CRIT_META: Record<Criticality, { label: string; color: any; weight: number }> = {
   high: { label: 'Alta', color: 'danger', weight: 0 },
   med: { label: 'Media', color: 'warning', weight: 1 },
   low: { label: 'Bassa', color: 'neutral', weight: 2 },
 }
 const STALE_DAYS = 5
-const ESCALATE_AFTER = 3 // solleciti oltre i quali la dipendenza va escalata
+const ESCALATE_AFTER = 3
+const RECHECK_DAYS = 7 // external backlog items not checked for this long
 
-const emptyDraft = (): Partial<Dependency> => ({
+const emptyDraft = (streamId?: string): Partial<Dependency> => ({
   title: '',
   party: '',
+  streamId,
   type: 'ticket',
   ref: '',
   link: '',
@@ -65,20 +73,25 @@ export default function DependenciesView() {
   const [draft, setDraft] = useState<Partial<Dependency> | null>(null)
   const [editId, setEditId] = useState<string | null>(null)
   const [fText, setFText] = useState('')
-  const [fParty, setFParty] = useState('')
-  const [fStatus, setFStatus] = useState('')
+  const [fStream, setFStream] = useState('')
   const [openOnly, setOpenOnly] = useState(true)
+  const [extText, setExtText] = useState('')
 
   const deps = data.dependencies
+  const streamOf = (id?: string) => data.streams.find((s) => s.id === id)
 
+  /* ----------------------------- dependencies ---------------------------- */
   function save() {
     if (!draft?.title?.trim()) return
     update((d) => {
+      const party =
+        draft.party?.trim() || d.streams.find((s) => s.id === draft.streamId)?.name || ''
       if (editId) {
         const x = d.dependencies.find((y) => y.id === editId)
         if (x) {
           Object.assign(x, draft, {
             title: draft.title!.trim(),
+            party,
             ref: draft.ref?.trim() || undefined,
             link: draft.link?.trim() || undefined,
             neededBy: draft.neededBy || undefined,
@@ -90,7 +103,8 @@ export default function DependenciesView() {
         d.dependencies.unshift({
           id: uid(),
           title: draft.title!.trim(),
-          party: draft.party?.trim() ?? '',
+          party,
+          streamId: draft.streamId,
           type: (draft.type as DependencyType) ?? 'ticket',
           ref: draft.ref?.trim() || undefined,
           link: draft.link?.trim() || undefined,
@@ -117,14 +131,15 @@ export default function DependenciesView() {
     setEditId(null)
   }
 
-  function setStatus(id: string, status: DependencyStatus) {
+  function patchDep(id: string, patch: Partial<Dependency>) {
     update((d) => {
       const x = d.dependencies.find((y) => y.id === id)
-      if (x) {
-        x.status = status
-        x.lastUpdate = nowISO()
-      }
+      if (x) Object.assign(x, patch)
     })
+  }
+
+  function setStatus(id: string, status: DependencyStatus) {
+    patchDep(id, { status, lastUpdate: nowISO() })
   }
 
   function chase(id: string) {
@@ -138,11 +153,6 @@ export default function DependenciesView() {
     })
   }
 
-  const needsEscalation = (x: Dependency) =>
-    (x.chaseCount ?? 0) >= ESCALATE_AFTER &&
-    x.status !== 'closed' &&
-    x.status !== 'unblocked'
-
   const isOpen = (x: Dependency) => x.status !== 'closed'
   const isStale = (x: Dependency) =>
     (x.status === 'open' || x.status === 'waiting') && ageInDays(x.lastUpdate) >= STALE_DAYS
@@ -150,41 +160,96 @@ export default function DependenciesView() {
     const dd = daysFromToday(x.neededBy)
     return x.status !== 'closed' && dd !== null && dd < 0
   }
+  const needsEscalation = (x: Dependency) =>
+    (x.chaseCount ?? 0) >= ESCALATE_AFTER &&
+    x.status !== 'closed' &&
+    x.status !== 'unblocked'
 
+  /* ---------------------------- external items --------------------------- */
+  function addExternal() {
+    const t = extText.trim()
+    if (!t || !fStream) return
+    update((d) => {
+      d.externalItems.unshift({
+        id: uid(),
+        streamId: fStream,
+        title: t,
+        status: 'watching',
+        lastCheck: nowISO(),
+        createdAt: nowISO(),
+      })
+    })
+    setExtText('')
+  }
+  function patchExt(id: string, patch: Partial<ExternalItem>) {
+    update((d) => {
+      const x = d.externalItems.find((y) => y.id === id)
+      if (x) Object.assign(x, patch)
+    })
+  }
+  function removeExt(id: string) {
+    update((d) => {
+      d.externalItems = d.externalItems.filter((x) => x.id !== id)
+    })
+  }
+  const needsRecheck = (x: ExternalItem) =>
+    x.status !== 'done' && x.status !== 'dropped' && ageInDays(x.lastCheck) >= RECHECK_DAYS
+
+  /* --------------------------------- KPI --------------------------------- */
   const kpis = [
     { label: 'Aperte', value: deps.filter(isOpen).length, color: 'var(--color-primary)' },
-    { label: 'Critiche in attesa', value: deps.filter((x) => x.criticality === 'high' && x.status !== 'closed' && x.status !== 'unblocked').length, color: 'var(--color-danger)' },
     { label: 'Scadute', value: deps.filter(isOverdue).length, color: 'var(--color-danger)' },
     { label: 'Da sollecitare', value: deps.filter(isStale).length, color: 'var(--color-warning)' },
     { label: 'Da escalare', value: deps.filter(needsEscalation).length, color: 'var(--color-danger)' },
+    {
+      label: 'Backlog da ricontrollare',
+      value: data.externalItems.filter(needsRecheck).length,
+      color: 'var(--color-warning)',
+    },
   ]
 
-  const parties = Array.from(new Set(deps.map((x) => x.party).filter(Boolean)))
+  const matches = (x: Dependency) => {
+    if (openOnly && x.status === 'closed') return false
+    if (fStream && x.streamId !== fStream) return false
+    if (
+      fText &&
+      !`${x.title} ${x.party} ${x.ref ?? ''} ${x.blocks ?? ''}`
+        .toLowerCase()
+        .includes(fText.toLowerCase())
+    )
+      return false
+    return true
+  }
 
-  const visible = deps
-    .filter((x) => {
-      if (openOnly && x.status === 'closed') return false
-      if (fText && !`${x.title} ${x.party} ${x.ref ?? ''} ${x.blocks ?? ''}`.toLowerCase().includes(fText.toLowerCase())) return false
-      if (fParty && x.party !== fParty) return false
-      if (fStatus && x.status !== fStatus) return false
-      return true
-    })
-    .sort((a, b) => {
-      if (isOpen(a) !== isOpen(b)) return isOpen(a) ? -1 : 1
-      if (CRIT_META[a.criticality].weight !== CRIT_META[b.criticality].weight)
-        return CRIT_META[a.criticality].weight - CRIT_META[b.criticality].weight
-      return (daysFromToday(a.neededBy) ?? 9999) - (daysFromToday(b.neededBy) ?? 9999)
-    })
+  const visible = deps.filter(matches).sort((a, b) => {
+    if (isOpen(a) !== isOpen(b)) return isOpen(a) ? -1 : 1
+    if (CRIT_META[a.criticality].weight !== CRIT_META[b.criticality].weight)
+      return CRIT_META[a.criticality].weight - CRIT_META[b.criticality].weight
+    return (daysFromToday(a.neededBy) ?? 9999) - (daysFromToday(b.neededBy) ?? 9999)
+  })
+
+  const extVisible = data.externalItems.filter(
+    (x) => (!fStream || x.streamId === fStream) && (!openOnly || x.status !== 'done'),
+  )
+  const streamActions = fStream
+    ? data.actions.filter((a) => a.streamId === fStream && a.status !== 'done')
+    : []
 
   return (
     <div>
       <PageHeader
-        title="Dipendenze esterne"
-        subtitle="Ticket, approvazioni e blocchi che dipendono da altri team o vendor (la «D» del RAID log)."
+        title="Interlocutori"
+        subtitle="Cosa hai aperto con CCoE, RunOps e gli altri team: dipendenze, item del loro backlog che monitori, action verso di loro."
         actions={
           <>
             <GuideButton section="dependencies" />
-            <Button variant="primary" onClick={() => { setEditId(null); setDraft(emptyDraft()) }}>
+            <Button
+              variant="primary"
+              onClick={() => {
+                setEditId(null)
+                setDraft(emptyDraft(fStream || undefined))
+              }}
+            >
               <IconPlus /> Nuova dipendenza
             </Button>
           </>
@@ -193,7 +258,10 @@ export default function DependenciesView() {
 
       <div className="mb-4 grid grid-cols-2 gap-2 lg:grid-cols-5">
         {kpis.map((k) => (
-          <div key={k.label} className="flex items-center gap-3 rounded-[var(--radius)] border bg-[var(--color-surface)] px-3 py-2">
+          <div
+            key={k.label}
+            className="flex items-center gap-3 rounded-[var(--radius)] border bg-[var(--color-surface)] px-3 py-2"
+          >
             <span className="h-7 w-1 rounded-full" style={{ background: k.color }} />
             <div className="leading-tight">
               <div className="text-xl font-semibold tabular-nums">{k.value}</div>
@@ -203,34 +271,77 @@ export default function DependenciesView() {
         ))}
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Input value={fText} onChange={(e) => setFText(e.target.value)} placeholder="Filtra…" className="h-8 w-40" />
-        <Select value={fParty} onChange={(e) => setFParty(e.target.value)} className="h-8">
-          <option value="">Tutti i referenti</option>
-          {parties.map((p) => <option key={p} value={p}>{p}</option>)}
-        </Select>
-        <Select value={fStatus} onChange={(e) => setFStatus(e.target.value)} className="h-8">
-          <option value="">Tutti gli stati</option>
-          {DEP_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-        </Select>
-        <Button size="sm" variant={openOnly ? 'primary' : 'outline'} onClick={() => setOpenOnly((v) => !v)}>
-          Solo aperte
-        </Button>
-        {(fText || fParty || fStatus) && (
-          <Button size="sm" variant="ghost" onClick={() => { setFText(''); setFParty(''); setFStatus('') }}>
-            <IconX width={14} height={14} /> Pulisci
+      {/* Stream tabs */}
+      <div className="mb-4 flex flex-wrap items-center gap-1.5 text-xs">
+        <button
+          onClick={() => setFStream('')}
+          className={cn(
+            'rounded-full border px-2.5 py-1',
+            !fStream
+              ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
+              : 'text-[var(--color-muted)] hover:bg-[var(--color-surface-2)]',
+          )}
+        >
+          Tutti
+        </button>
+        {data.streams.map((s) => {
+          const n = deps.filter((x) => x.streamId === s.id && isOpen(x)).length
+          return (
+            <button
+              key={s.id}
+              onClick={() => setFStream(s.id)}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1',
+                fStream === s.id
+                  ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
+                  : 'text-[var(--color-muted)] hover:bg-[var(--color-surface-2)]',
+              )}
+            >
+              <StreamDot stream={s} />
+              {s.name}
+              {n > 0 && <span className="opacity-70">({n})</span>}
+            </button>
+          )
+        })}
+        <div className="ml-auto flex items-center gap-2">
+          <Input
+            value={fText}
+            onChange={(e) => setFText(e.target.value)}
+            placeholder="Filtra…"
+            className="h-8 w-36"
+          />
+          <Button
+            size="sm"
+            variant={openOnly ? 'primary' : 'outline'}
+            onClick={() => setOpenOnly((v) => !v)}
+          >
+            Solo aperte
           </Button>
-        )}
+          {(fText || fStream) && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setFText('')
+                setFStream('')
+              }}
+            >
+              <IconX width={14} height={14} />
+            </Button>
+          )}
+        </div>
       </div>
 
-      {deps.length === 0 ? (
+      {/* Dependencies */}
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+        Dipendenze
+      </h3>
+      {visible.length === 0 ? (
         <EmptyState
-          icon={<IconLink width={28} height={28} />}
-          title="Nessuna dipendenza registrata"
-          hint="Aggiungi i ticket e i blocchi che dipendono da altri: tienili visibili, assegna un owner che li solleciti e una data «needed by»."
+          icon={<IconLink width={26} height={26} />}
+          title="Nessuna dipendenza"
+          hint="Registra qui i ticket e i blocchi che dipendono da altri team: owner che li insegue, data «needed by», e li tieni visibili."
         />
-      ) : visible.length === 0 ? (
-        <EmptyState title="Nessun risultato" hint="Nessuna dipendenza con questi filtri." />
       ) : (
         <div className="space-y-2">
           {visible.map((x) => {
@@ -242,23 +353,63 @@ export default function DependenciesView() {
                 <div className="flex flex-wrap items-center gap-2">
                   <span
                     className="h-6 w-1 shrink-0 rounded-full"
-                    style={{ background: CRIT_META[x.criticality].color === 'danger' ? 'var(--color-danger)' : CRIT_META[x.criticality].color === 'warning' ? 'var(--color-warning)' : 'var(--color-border)' }}
+                    style={{
+                      background:
+                        x.criticality === 'high'
+                          ? 'var(--color-danger)'
+                          : x.criticality === 'med'
+                            ? 'var(--color-warning)'
+                            : 'var(--color-border)',
+                    }}
                   />
-                  <button onClick={() => { setEditId(x.id); setDraft({ ...x }) }} className="min-w-0 flex-1 text-left">
+                  <button
+                    onClick={() => {
+                      setEditId(x.id)
+                      setDraft({ ...x })
+                    }}
+                    className="min-w-0 flex-1 text-left"
+                  >
                     <div className="flex items-center gap-2">
                       <span className="truncate text-sm font-medium">{x.title}</span>
-                      {x.ref && <span className="shrink-0 text-xs text-[var(--color-muted)]">#{x.ref}</span>}
+                      {x.ref && (
+                        <span className="shrink-0 text-xs text-[var(--color-muted)]">
+                          #{x.ref}
+                        </span>
+                      )}
                     </div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                      {x.party && <Badge color="primary">{x.party}</Badge>}
-                      <Badge color="neutral">{DEP_TYPES.find((t) => t.key === x.type)?.label}</Badge>
-                      <Badge color={CRIT_META[x.criticality].color}>{CRIT_META[x.criticality].label}</Badge>
-                      {x.owner && <span className="text-xs text-[var(--color-muted)]">· {x.owner}</span>}
+                      <Badge color="neutral">
+                        {DEP_TYPES.find((t) => t.key === x.type)?.label}
+                      </Badge>
+                      <Badge color={CRIT_META[x.criticality].color}>
+                        {CRIT_META[x.criticality].label}
+                      </Badge>
+                      {x.owner && (
+                        <span className="text-xs text-[var(--color-muted)]">· {x.owner}</span>
+                      )}
                     </div>
                   </button>
 
+                  <StreamPicker
+                    streamId={x.streamId}
+                    streams={data.streams}
+                    onPick={(id) =>
+                      patchDep(x.id, {
+                        streamId: id,
+                        party: streamOf(id)?.name ?? x.party,
+                      })
+                    }
+                    compact
+                  />
+
                   {x.link && /^https?:\/\//.test(x.link) && (
-                    <a href={x.link} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Apri il ticket" className="grid h-8 w-8 place-items-center rounded-md text-[var(--color-muted)] hover:bg-[var(--color-surface-2)]">
+                    <a
+                      href={x.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Apri il ticket"
+                      className="grid h-8 w-8 place-items-center rounded-md text-[var(--color-muted)] hover:bg-[var(--color-surface-2)]"
+                    >
                       <IconExternal width={15} height={15} />
                     </a>
                   )}
@@ -274,11 +425,24 @@ export default function DependenciesView() {
                   )}
                   {needsEscalation(x) && <Badge color="danger">da escalare</Badge>}
 
-                  <Select value={x.status} onChange={(e) => setStatus(x.id, e.target.value as DependencyStatus)} className="h-8">
-                    {DEP_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                  <Select
+                    value={x.status}
+                    onChange={(e) => setStatus(x.id, e.target.value as DependencyStatus)}
+                    className="h-8"
+                  >
+                    {DEP_STATUSES.map((s) => (
+                      <option key={s.key} value={s.key}>
+                        {s.label}
+                      </option>
+                    ))}
                   </Select>
                   {x.status !== 'closed' && x.status !== 'unblocked' && (
-                    <Button size="sm" variant={stale ? 'primary' : 'outline'} onClick={() => chase(x.id)} title="Registra un sollecito (aggiorna la data)">
+                    <Button
+                      size="sm"
+                      variant={stale ? 'primary' : 'outline'}
+                      onClick={() => chase(x.id)}
+                      title="Registra un sollecito"
+                    >
                       Sollecita
                     </Button>
                   )}
@@ -294,6 +458,144 @@ export default function DependenciesView() {
         </div>
       )}
 
+      {/* External backlog */}
+      <div className="mt-6">
+        <div className="mb-2 flex items-center gap-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+            Backlog monitorato
+          </h3>
+          <span className="text-[11px] text-[var(--color-muted)]">
+            item del backlog altrui che segui ma non gestisci
+          </span>
+        </div>
+
+        {fStream ? (
+          <div className="mb-2 flex gap-2">
+            <Input
+              value={extText}
+              onChange={(e) => setExtText(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addExternal()}
+              placeholder={`Aggiungi un item del backlog di ${streamOf(fStream)?.name}…`}
+            />
+            <Button variant="primary" onClick={addExternal}>
+              <IconPlus width={15} height={15} />
+            </Button>
+          </div>
+        ) : (
+          <p className="mb-2 text-xs text-[var(--color-muted)]">
+            Seleziona un interlocutore qui sopra per aggiungere item al suo backlog.
+          </p>
+        )}
+
+        {extVisible.length === 0 ? (
+          <p className="rounded-[var(--radius)] border border-dashed px-4 py-5 text-center text-xs text-[var(--color-muted)]">
+            Nessun item monitorato{fStream ? ` per ${streamOf(fStream)?.name}` : ''}.
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            {extVisible.map((x) => {
+              const stream = streamOf(x.streamId)
+              const recheck = needsRecheck(x)
+              return (
+                <div
+                  key={x.id}
+                  className="group flex flex-wrap items-center gap-2 rounded-[calc(var(--radius)-0.25rem)] border bg-[var(--color-surface)] px-3 py-2"
+                >
+                  <StreamDot stream={stream} />
+                  <input
+                    value={x.title}
+                    onChange={(e) => patchExt(x.id, { title: e.target.value })}
+                    className={cn(
+                      'min-w-[160px] flex-1 bg-transparent text-sm outline-none',
+                      x.status === 'done' && 'text-[var(--color-muted)] line-through',
+                    )}
+                  />
+                  <input
+                    value={x.ref ?? ''}
+                    onChange={(e) => patchExt(x.id, { ref: e.target.value })}
+                    placeholder="rif."
+                    className="h-7 w-24 rounded border bg-transparent px-2 text-xs outline-none focus:border-[var(--color-primary)]"
+                  />
+                  <input
+                    value={x.link ?? ''}
+                    onChange={(e) => patchExt(x.id, { link: e.target.value })}
+                    placeholder="link"
+                    className="h-7 w-28 rounded border bg-transparent px-2 text-xs outline-none focus:border-[var(--color-primary)]"
+                  />
+                  {x.link && /^https?:\/\//.test(x.link) && (
+                    <a
+                      href={x.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[var(--color-muted)] hover:text-[var(--color-primary)]"
+                    >
+                      <IconExternal width={14} height={14} />
+                    </a>
+                  )}
+                  {recheck && (
+                    <Badge color="warning">
+                      da ricontrollare ({ageInDays(x.lastCheck)}g)
+                    </Badge>
+                  )}
+                  <Select
+                    value={x.status}
+                    onChange={(e) =>
+                      patchExt(x.id, {
+                        status: e.target.value as ExternalItemStatus,
+                        lastCheck: nowISO(),
+                      })
+                    }
+                    className="h-7 text-xs"
+                  >
+                    {EXTERNAL_STATUSES.map((s) => (
+                      <option key={s.key} value={s.key}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button
+                    size="sm"
+                    variant={recheck ? 'primary' : 'ghost'}
+                    onClick={() => patchExt(x.id, { lastCheck: nowISO() })}
+                    title={`Ultimo check: ${fmtDate(x.lastCheck.slice(0, 10))}`}
+                  >
+                    <IconCheck width={13} height={13} /> Controllato
+                  </Button>
+                  <button
+                    onClick={() => removeExt(x.id)}
+                    className="text-[var(--color-muted)] opacity-0 transition-opacity hover:text-[var(--color-danger)] group-hover:opacity-100"
+                  >
+                    <IconTrash width={14} height={14} />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Actions toward the selected counterpart */}
+      {fStream && streamActions.length > 0 && (
+        <div className="mt-6">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+            Action verso {streamOf(fStream)?.name}
+          </h3>
+          <div className="space-y-1.5">
+            {streamActions.map((a) => (
+              <div
+                key={a.id}
+                className="flex items-center gap-2 rounded-[calc(var(--radius)-0.25rem)] border px-3 py-2 text-sm"
+              >
+                <span className="flex-1 truncate">{a.title}</span>
+                {a.owner && <Badge color="primary">{a.owner}</Badge>}
+                {a.due && <Badge color="neutral">{relativeDays(a.due)}</Badge>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Edit modal */}
       <Modal
         open={draft !== null}
         onClose={() => setDraft(null)}
@@ -307,60 +609,131 @@ export default function DependenciesView() {
               </Button>
             )}
             <Button onClick={() => setDraft(null)}>Annulla</Button>
-            <Button variant="primary" onClick={save}>Salva</Button>
+            <Button variant="primary" onClick={save}>
+              Salva
+            </Button>
           </>
         }
       >
         {draft && (
           <div className="space-y-3">
             <Field label="Cosa serve">
-              <Input autoFocus value={draft.title ?? ''} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Es. Apertura firewall verso il nuovo servizio" />
+              <Input
+                autoFocus
+                value={draft.title ?? ''}
+                onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                placeholder="Es. Apertura firewall verso il nuovo servizio"
+              />
             </Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Da chi (referente)">
-                <Input value={draft.party ?? ''} onChange={(e) => setDraft({ ...draft, party: e.target.value })} placeholder="Team Network / Vendor X…" />
+              <Field label="Interlocutore (stream)">
+                <Select
+                  value={draft.streamId ?? ''}
+                  onChange={(e) =>
+                    setDraft({ ...draft, streamId: e.target.value || undefined })
+                  }
+                  className="w-full"
+                >
+                  <option value="">— scegli —</option>
+                  {data.streams.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </Select>
               </Field>
               <Field label="Tipo">
-                <Select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value as DependencyType })} className="w-full">
-                  {DEP_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+                <Select
+                  value={draft.type}
+                  onChange={(e) =>
+                    setDraft({ ...draft, type: e.target.value as DependencyType })
+                  }
+                  className="w-full"
+                >
+                  {DEP_TYPES.map((t) => (
+                    <option key={t.key} value={t.key}>
+                      {t.label}
+                    </option>
+                  ))}
                 </Select>
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Riferimento (ID ticket)">
-                <Input value={draft.ref ?? ''} onChange={(e) => setDraft({ ...draft, ref: e.target.value })} placeholder="INC0012345" />
+                <Input
+                  value={draft.ref ?? ''}
+                  onChange={(e) => setDraft({ ...draft, ref: e.target.value })}
+                  placeholder="INC0012345"
+                />
               </Field>
               <Field label="Link al ticket">
-                <Input value={draft.link ?? ''} onChange={(e) => setDraft({ ...draft, link: e.target.value })} placeholder="https://…" />
+                <Input
+                  value={draft.link ?? ''}
+                  onChange={(e) => setDraft({ ...draft, link: e.target.value })}
+                  placeholder="https://…"
+                />
               </Field>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <Field label="Stato">
-                <Select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as DependencyStatus })} className="w-full">
-                  {DEP_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                <Select
+                  value={draft.status}
+                  onChange={(e) =>
+                    setDraft({ ...draft, status: e.target.value as DependencyStatus })
+                  }
+                  className="w-full"
+                >
+                  {DEP_STATUSES.map((s) => (
+                    <option key={s.key} value={s.key}>
+                      {s.label}
+                    </option>
+                  ))}
                 </Select>
               </Field>
               <Field label="Criticità">
-                <Select value={draft.criticality} onChange={(e) => setDraft({ ...draft, criticality: e.target.value as Criticality })} className="w-full">
+                <Select
+                  value={draft.criticality}
+                  onChange={(e) =>
+                    setDraft({ ...draft, criticality: e.target.value as Criticality })
+                  }
+                  className="w-full"
+                >
                   <option value="high">Alta</option>
                   <option value="med">Media</option>
                   <option value="low">Bassa</option>
                 </Select>
               </Field>
               <Field label="Needed by">
-                <Input type="date" value={draft.neededBy ?? ''} onChange={(e) => setDraft({ ...draft, neededBy: e.target.value })} />
+                <Input
+                  type="date"
+                  value={draft.neededBy ?? ''}
+                  onChange={(e) => setDraft({ ...draft, neededBy: e.target.value })}
+                />
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Owner (chi la segue)">
-                <Input value={draft.owner ?? ''} onChange={(e) => setDraft({ ...draft, owner: e.target.value })} placeholder="Tu / un membro del team" />
+                <Input
+                  value={draft.owner ?? ''}
+                  onChange={(e) => setDraft({ ...draft, owner: e.target.value })}
+                  placeholder="Tu / un membro del team"
+                />
               </Field>
               <Field label="Cosa blocca">
-                <Input value={draft.blocks ?? ''} onChange={(e) => setDraft({ ...draft, blocks: e.target.value })} placeholder="Es. Go-live servizio X" />
+                <Input
+                  value={draft.blocks ?? ''}
+                  onChange={(e) => setDraft({ ...draft, blocks: e.target.value })}
+                  placeholder="Es. Go-live servizio X"
+                />
               </Field>
             </div>
             <Field label="Note">
-              <Textarea rows={2} value={draft.notes ?? ''} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Contesto, contatti, prossimo follow-up…" />
+              <Textarea
+                rows={2}
+                value={draft.notes ?? ''}
+                onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
+                placeholder="Contesto, contatti, prossimo follow-up…"
+              />
             </Field>
           </div>
         )}

@@ -3,6 +3,7 @@ import { Button, Modal } from './ui'
 import { IconHelp } from './icons'
 
 export type GuideKey =
+  | 'inbox'
   | 'daily'
   | 'standup'
   | 'artsync'
@@ -26,6 +27,31 @@ interface Guide {
 }
 
 const GUIDES: Record<GuideKey, Guide> = {
+  inbox: {
+    title: 'Inbox',
+    intro:
+      'Il punto unico di atterraggio di tutto ciò che ti arriva: mail che toccano l’infrastruttura, richieste, note di meeting. Serve a non perdere niente e a decidere una volta sola cosa farne.',
+    sections: [
+      {
+        title: 'Come si usa',
+        items: [
+          'Scegli la fonte (Mail / Meeting / ART Sync / Chat / Idea) e lo stream (CCoE, Digital CCoE, Team interno, RunOps…), poi incolla: una riga = un item.',
+          'Smista ogni item col menu ⋯: → Attività di oggi · → Card Kanban · → Dipendenza esterna · → Action item · → Porta in ART Sync · → Roadmap · Archivia.',
+          'L’avatar assegna l’item a una persona e lo trasforma in una delega (lo trovi in Team & 1:1 → Deleghe).',
+          'Il badge nel menu laterale dice quanti item restano da smistare: l’obiettivo è chiudere la giornata a zero.',
+        ],
+      },
+      {
+        title: 'Buone pratiche',
+        items: [
+          'Cattura subito, decidi dopo: incollare costa 2 secondi, ricostruire una richiesta persa costa un’ora.',
+          'Smista almeno una volta al giorno (fine mattina o fine giornata): l’inbox è un punto di transito, non un archivio.',
+          'Tagga sempre lo stream: è ciò che fa comporre da sola l’agenda dell’ART Sync.',
+        ],
+      },
+    ],
+    cadence: 'Cattura in continuo · smistamento almeno 1 volta al giorno.',
+  },
   daily: {
     title: 'Oggi',
     intro:
@@ -34,8 +60,9 @@ const GUIDES: Record<GuideKey, Guide> = {
       {
         title: 'Come si usa',
         items: [
+          '«Quadro completo» in cima: da smistare · dipendenze a rischio · deleghe ferme · action aperte · backlog da ricontrollare. Se è tutto a zero non ti sei perso niente; clicca un numero per andare alla sezione.',
           'Le 3 priorità di oggi: scrivi al massimo 3 cose che devono chiudersi oggi. Si salvano per data, ogni giorno riparti da zero.',
-          'Quick capture: butta giù qualsiasi pensiero e premi Invio. Poi smista — ✓ per completarlo, «Kanban» per promuoverlo a card.',
+          'Diario: incolla più righe per aggiungere tante attività insieme; ogni riga ha stream, assegnatario e menu ⋯ (→ Kanban, → ART Sync, → domani).',
           'Focus della settimana: 3 obiettivi più ampi che restano fissi per tutta la settimana.',
           '1:1 in arrivo e Azioni in scadenza: pannelli automatici di sola lettura, alimentati da Team e da Decisioni & Azioni.',
         ],
@@ -79,17 +106,18 @@ const GUIDES: Record<GuideKey, Guide> = {
   artsync: {
     title: 'ART Sync',
     intro:
-      'Evento SAFe facilitato dall’RTE: unisce il Coach Sync (ex Scrum of Scrums, lato esecuzione) e il PO Sync (lato scope e priorità). Serve a dare visibilità sul progresso verso gli obiettivi di PI e a far emergere impedimenti e dipendenze.',
+      'Evento SAFe facilitato dall’RTE: unisce il Coach Sync (ex Scrum of Scrums, lato esecuzione) e il PO Sync (lato scope e priorità). Qui l’agenda è la TUA: le sezioni che presenti davvero, già compilate dai tuoi dati.',
     sections: [
       {
         title: 'Come si usa',
         items: [
-          'La mattina apri la sezione sulla data di oggi e compila «Da riportare» nelle 5 aree: Progresso · Impedimenti · Dipendenze a rischio · Rischi (ROAM) · Scope.',
-          '«↻ suggerisci» pesca automaticamente gli impedimenti dalle card Kanban «Bloccato» e le dipendenze critiche/scadute dalla sezione Dipendenze.',
+          'La mattina apri la data di oggi: l’agenda mostra le tue sezioni (CCoE · Digital CCoE · Progress Internal Team · External Dependencies · External Meeting · Rischi ROAM).',
+          '«↻ componi» riempie la sezione dai tuoi dati: attività e action taggate con quello stream, dipendenze aperte, item del backlog esterno che monitori.',
           'Durante il meeting spunta «riportato» su ogni punto e usa la nota per annotare cosa è emerso.',
           'I rischi vivono in un registro persistente: restano di sync in sync (con owner e aging) finché non li marchi Resolved. Il check «riportato» invece è per-giornata.',
-          'Le action in uscita vivono in «Decisioni & Azioni» (tag ART Sync): un solo stato ovunque. Portale nella giornata con «→ Diario» (stato collegato: chiudi l’attività e si chiude l’action) o «→ Kanban».',
-          '«Copia» ti mette il riepilogo negli appunti, pronto per Teams/Slack.',
+          'Le action in uscita: assegna owner con l’avatar e portale nella giornata con «→ Diario» (stato collegato) o «→ Kanban». Le ritrovi in «Decisioni & Azioni» e in «Team → Deleghe».',
+          '«Copia» genera il testo già nel tuo formato di presentazione (CCoE: … Digital CCoE: …), pronto da incollare.',
+          'Il pulsante «Agenda» ti fa rinominare, riordinare, aggiungere o togliere sezioni: l’app si adatta a come presenti tu.',
         ],
       },
       {
@@ -130,17 +158,18 @@ const GUIDES: Record<GuideKey, Guide> = {
     cadence: 'Aggiorna durante la giornata · review delle card ferme una volta a settimana.',
   },
   dependencies: {
-    title: 'Dipendenze esterne',
+    title: 'Interlocutori',
     intro:
-      'I ticket e i blocchi che dipendono da altri team o vendor: sono la «D» del RAID log e la causa #1 di lavoro fermo. L’obiettivo è renderli visibili e farli avanzare.',
+      'Il quadro di ciò che hai aperto con gli altri team (CCoE, Digital CCoE, RunOps…): dipendenze, item del loro backlog che monitori e action verso di loro. Le dipendenze sono la «D» del RAID log e la causa #1 di lavoro fermo.',
     sections: [
       {
         title: 'Come si usa',
         items: [
-          '«Nuova dipendenza»: cosa serve, da chi, tipo (ticket/approvazione/vendor/altro team), riferimento e link, criticità, «needed by» e owner che la segue.',
-          'Cambia stato al volo dal menù (Aperta → In attesa → Sollecitata → Sbloccata → Chiusa); «Sollecita» registra il follow-up e aggiorna la data.',
-          'La barra in alto è il tuo semaforo: Aperte · Critiche in attesa · Scadute · Da sollecitare. L’etichetta «ferma da Xg» segnala quelle dimenticate.',
-          'Le dipendenze critiche o scadute compaiono anche nel cockpit «Oggi».',
+          'I chip in alto filtrano per interlocutore: selezionane uno per vedere solo il suo quadro (e per poter aggiungere item al suo backlog).',
+          '«Nuova dipendenza»: cosa serve, da chi (stream), tipo, riferimento e link, criticità, «needed by» e owner che la segue.',
+          '«Sollecita» registra il follow-up: dopo 3 solleciti l’app marca «da escalare» — a quel punto portala al tuo responsabile o all’RTE.',
+          '«Backlog monitorato»: gli item del backlog ALTRUI che segui ma non gestisci. Premi «Controllato» quando li verifichi: dopo 7 giorni senza check compare «da ricontrollare».',
+          'La barra KPI è il semaforo: Aperte · Scadute · Da sollecitare · Da escalare · Backlog da ricontrollare.',
         ],
       },
       {
@@ -200,6 +229,14 @@ const GUIDES: Record<GuideKey, Guide> = {
         items: [
           'Aggiungi le competenze (le colonne); click su una cella per impostare il livello: Base → Solido → Esperto.',
           'Sotto ogni competenza «coperte» = quante persone sono almeno Solido. In rosso (0) = single point of failure.',
+        ],
+      },
+      {
+        title: 'Tab «Deleghe»',
+        items: [
+          'Il quadro di cosa hai passato a chi: attività del diario e action, raggruppate per persona, con stato e da quanto tempo sono ferme.',
+          'Assegni dall’avatar nel Diario di oggi, nell’Inbox o nell’ART Sync; qui monitori senza rincorrere.',
+          '«ferme ≥5g» è il segnale per riparlarne al prossimo 1:1 — o per capire se la persona è bloccata.',
         ],
       },
       {

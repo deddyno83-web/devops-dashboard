@@ -21,23 +21,26 @@ import {
   daysFromToday,
   mondayOf,
   weekLabel,
-  parseCapture,
+  ageInDays,
 } from '../lib/utils'
 import type { ActivityStatus } from '../types'
 import { PageHeader } from '../components/ui'
 import { GuideButton } from '../components/Guide'
 import { RowMenu, AssigneePicker } from '../components/RowMenu'
+import { StreamPicker } from '../components/Stream'
 import { KANBAN_COLUMNS } from '../types'
 
-export default function DailyView() {
+export default function DailyView({
+  onNavigate,
+}: {
+  onNavigate?: (tab: string) => void
+}) {
   const { data, update } = useStore()
   const today = todayISO()
   const thisWeek = mondayOf()
   const top = data.dailyTop[today] ?? ['', '', '']
   const doneArr = data.dailyDone[today] ?? [false, false, false]
   const topNotes = data.dailyTopNotes[today] ?? ['', '', '']
-  const [capture, setCapture] = useState('')
-  const peopleNames = data.people.map((p) => p.name)
 
   function setTop(i: number, value: string) {
     update((d) => {
@@ -299,6 +302,60 @@ export default function DailyView() {
     return { doneThis, doneLast, carriesThis, kanbanDone, depsClosed }
   })()
 
+  // "Quadro completo": everything still open across the whole dashboard.
+  // If these are all zero, nothing has slipped through the cracks.
+  const overview = [
+    {
+      label: 'da smistare',
+      value: data.inbox.filter((i) => !i.triagedAt).length,
+      tab: 'inbox',
+      color: 'var(--color-warning)',
+    },
+    {
+      label: 'dipendenze a rischio',
+      value: data.dependencies.filter(
+        (x) =>
+          x.status !== 'closed' &&
+          (x.criticality === 'high' ||
+            (daysFromToday(x.neededBy) ?? 9999) < 0 ||
+            (x.chaseCount ?? 0) >= 3),
+      ).length,
+      tab: 'dependencies',
+      color: 'var(--color-danger)',
+    },
+    {
+      label: 'deleghe ferme',
+      value: (() => {
+        let n = 0
+        for (const acts of Object.values(data.dailyActivities))
+          for (const a of acts)
+            if (a.owner && a.status !== 'done' && ageInDays(a.createdAt) >= 5) n++
+        n += data.actions.filter(
+          (a) => a.owner && a.status !== 'done' && ageInDays(a.createdAt) >= 5,
+        ).length
+        return n
+      })(),
+      tab: 'team',
+      color: 'var(--color-warning)',
+    },
+    {
+      label: 'action aperte',
+      value: data.actions.filter((a) => a.status !== 'done').length,
+      tab: 'decisions',
+      color: 'var(--color-primary)',
+    },
+    {
+      label: 'backlog da ricontrollare',
+      value: data.externalItems.filter(
+        (x) =>
+          x.status !== 'done' && x.status !== 'dropped' && ageInDays(x.lastCheck) >= 7,
+      ).length,
+      tab: 'dependencies',
+      color: 'var(--color-muted)',
+    },
+  ]
+  const allClear = overview.every((o) => o.value === 0)
+
   // Critical / overdue external dependencies for the side rail
   const hotDeps = data.dependencies
     .filter(
@@ -326,67 +383,9 @@ export default function DailyView() {
     })
   }
 
-  function addCapture() {
-    const text = capture.trim()
-    if (!text) return
-    update((d) =>
-      d.quickCapture.unshift({ id: uid(), text, createdAt: nowISO(), done: false }),
-    )
-    setCapture('')
-  }
-
-  function toggleCapture(id: string) {
-    update((d) => {
-      const n = d.quickCapture.find((x) => x.id === id)
-      if (n) n.done = !n.done
-    })
-  }
-
-  function removeCapture(id: string) {
-    update((d) => {
-      d.quickCapture = d.quickCapture.filter((x) => x.id !== id)
-    })
-  }
-
-  function promoteToKanban(id: string) {
-    update((d) => {
-      const n = d.quickCapture.find((x) => x.id === id)
-      if (!n) return
-      const p = parseCapture(n.text, d.people.map((x) => x.name))
-      d.kanban.unshift({
-        id: uid(),
-        title: p.title || n.text,
-        column: 'todo',
-        priority: p.priority ?? 'med',
-        tag: p.owner,
-        createdAt: nowISO(),
-        updatedAt: nowISO(),
-      })
-      d.quickCapture = d.quickCapture.filter((x) => x.id !== id)
-    })
-  }
-
-  function promoteToAction(id: string) {
-    update((d) => {
-      const n = d.quickCapture.find((x) => x.id === id)
-      if (!n) return
-      const p = parseCapture(n.text, d.people.map((x) => x.name))
-      d.actions.unshift({
-        id: uid(),
-        title: p.title || n.text,
-        owner: p.owner,
-        due: p.due,
-        status: 'todo',
-        createdAt: nowISO(),
-      })
-      d.quickCapture = d.quickCapture.filter((x) => x.id !== id)
-    })
-  }
-
   const weekArr = data.weeklyFocus[thisWeek] ?? ['', '', '']
   const week = [weekArr[0] ?? '', weekArr[1] ?? '', weekArr[2] ?? '']
   const weekNotesArr = data.weeklyFocusNotes[thisWeek] ?? ['', '', '']
-  const openCapture = data.quickCapture.filter((n) => !n.done)
 
   // Daily overview signals
   const upcoming1on1 = data.people
@@ -414,6 +413,37 @@ export default function DailyView() {
         subtitle={dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1)}
         actions={<GuideButton section="daily" />}
       />
+
+      {/* Quadro completo — niente si perde */}
+      <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[var(--radius)] border bg-[var(--color-surface)] px-4 py-2.5">
+        <span className="text-xs font-semibold">Quadro completo</span>
+        {allClear ? (
+          <span className="text-sm text-[var(--color-success)]">
+            Tutto sotto controllo 🎯
+          </span>
+        ) : (
+          overview
+            .filter((o) => o.value > 0)
+            .map((o) => (
+              <button
+                key={o.label}
+                onClick={() => onNavigate?.(o.tab)}
+                className="group inline-flex items-baseline gap-1.5 text-sm hover:underline"
+                title="Vai alla sezione"
+              >
+                <span
+                  className="text-lg font-semibold tabular-nums"
+                  style={{ color: o.color }}
+                >
+                  {o.value}
+                </span>
+                <span className="text-[var(--color-muted)] group-hover:text-[var(--color-fg)]">
+                  {o.label}
+                </span>
+              </button>
+            ))
+        )}
+      </div>
 
       {focusCards.length > 0 && (
         <Card className="mb-5 p-5">
@@ -589,6 +619,19 @@ export default function DailyView() {
                         {(a.carryCount ?? 0) + 1}° giorno
                       </Badge>
                     )}
+                    <StreamPicker
+                      streamId={a.streamId}
+                      streams={data.streams}
+                      onPick={(id) =>
+                        update((d) => {
+                          const x = (d.dailyActivities[today] ?? []).find(
+                            (y) => y.id === a.id,
+                          )
+                          if (x) x.streamId = id
+                        })
+                      }
+                      compact
+                    />
                     <AssigneePicker
                       owner={a.owner}
                       people={data.people}
@@ -634,106 +677,6 @@ export default function DailyView() {
             </div>
           </Card>
 
-          <Card className="p-5">
-            <div className="mb-3 flex items-center gap-2">
-              <h3 className="text-sm font-semibold">Quick capture</h3>
-              <span className="text-xs text-[var(--color-muted)]">
-                butta giù tutto, smista dopo
-              </span>
-            </div>
-            <div className="flex gap-2">
-              <input
-                value={capture}
-                onChange={(e) => setCapture(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addCapture()}
-                placeholder="Es. «Sollecitare vendor @Luca !alta /ven»"
-                className="h-9 flex-1 rounded-[calc(var(--radius)-0.25rem)] border bg-[var(--color-bg)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-primary)]/40"
-              />
-              <Button variant="primary" onClick={addCapture}>
-                <IconPlus /> Aggiungi
-              </Button>
-            </div>
-            {(() => {
-              const cap = capture.trim()
-                ? parseCapture(capture, peopleNames)
-                : null
-              if (!cap || (!cap.owner && !cap.priority && !cap.due)) return null
-              return (
-                <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-[var(--color-muted)]">
-                  <span>Riconosciuto:</span>
-                  {cap.owner && <Badge color="primary">owner: {cap.owner}</Badge>}
-                  {cap.priority && (
-                    <Badge
-                      color={
-                        cap.priority === 'high'
-                          ? 'danger'
-                          : cap.priority === 'low'
-                            ? 'neutral'
-                            : 'warning'
-                      }
-                    >
-                      priorità:{' '}
-                      {cap.priority === 'high'
-                        ? 'alta'
-                        : cap.priority === 'low'
-                          ? 'bassa'
-                          : 'media'}
-                    </Badge>
-                  )}
-                  {cap.due && <Badge color="success">scad.: {fmtDate(cap.due)}</Badge>}
-                </div>
-              )
-            })()}
-
-            <div className="mt-3 space-y-1.5">
-              {openCapture.length === 0 && (
-                <p className="py-2 text-center text-xs text-[var(--color-muted)]">
-                  Inbox vuota. 🎯
-                </p>
-              )}
-              {openCapture.map((n) => (
-                <div
-                  key={n.id}
-                  className="group flex items-center gap-2 rounded-[calc(var(--radius)-0.25rem)] border px-3 py-2"
-                >
-                  <button
-                    onClick={() => toggleCapture(n.id)}
-                    className="grid h-5 w-5 shrink-0 place-items-center rounded-md border text-transparent hover:text-[var(--color-success)]"
-                    aria-label="Completa"
-                  >
-                    <IconCheck width={14} height={14} />
-                  </button>
-                  <span className="flex-1 text-sm">{n.text}</span>
-                  <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => promoteToKanban(n.id)}
-                      title="Sposta nel Kanban"
-                    >
-                      <IconBoard width={14} height={14} /> Kanban
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => promoteToAction(n.id)}
-                      title="Crea action item"
-                    >
-                      <IconCheck width={14} height={14} /> Azione
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => removeCapture(n.id)}
-                      aria-label="Elimina"
-                    >
-                      <IconTrash width={14} height={14} />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
         </div>
 
         {/* Side rail */}

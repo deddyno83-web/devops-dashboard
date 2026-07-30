@@ -81,6 +81,7 @@ export interface ActionItem {
   priority?: Priority
   source?: 'art-sync' // provenance tag; undefined = created by hand
   syncDate?: string // for art-sync actions: the sync (YYYY-MM-DD) they came from
+  streamId?: ID
 }
 
 export interface QuickNote {
@@ -168,6 +169,7 @@ export interface Dependency {
   blocks?: string // what it blocks
   criticality: Criticality
   notes?: string
+  streamId?: ID // counterpart this dependency belongs to
   chaseCount?: number // "Sollecita" clicks — at 3+ the app flags "da escalare"
   lastUpdate: string // ISO datetime — drives aging
   createdAt: string
@@ -198,6 +200,7 @@ export interface Activity {
   status: ActivityStatus
   note?: string
   owner?: string // assigned team member (for monitoring / delegation)
+  streamId?: ID
   createdAt: string
   carryCount?: number // times carried over from previous days
   actionId?: ID // linked ActionItem — completing the activity completes the action
@@ -220,7 +223,9 @@ export type RoamStatus = 'resolved' | 'owned' | 'accepted' | 'mitigated'
 
 export interface ArtSyncPoint {
   id: ID
+  /** Legacy taxonomy — kept for old data; new points use `sectionId`. */
   category: ArtSyncCategory
+  sectionId?: ID // SyncSection this point belongs to
   text: string
   note?: string
   reported: boolean
@@ -327,6 +332,91 @@ export const ROADMAP_HORIZONS: {
   { key: 'later', label: 'Più avanti', hint: 'visione, senza impegno di data' },
 ]
 
+/* ------------------------------- Streams ---------------------------------- *
+ * A stream is a workflow / counterpart: CCoE, Digital CCoE, the internal team,
+ * RunOps… It is the same taxonomy used in the ART Sync presentation, so tagging
+ * items by stream lets the agenda compose itself.                             */
+
+export interface Stream {
+  id: ID
+  name: string
+  color: string
+  external: boolean // true = external counterpart with its own backlog
+  order: number
+}
+
+export const DEFAULT_STREAMS: Omit<Stream, 'id'>[] = [
+  { name: 'CCoE', color: 'oklch(0.65 0.16 264)', external: true, order: 0 },
+  { name: 'Digital CCoE', color: 'oklch(0.6 0.17 320)', external: true, order: 1 },
+  { name: 'Team interno', color: 'oklch(0.65 0.15 160)', external: false, order: 2 },
+  { name: 'RunOps', color: 'oklch(0.7 0.15 70)', external: true, order: 3 },
+]
+
+/* --------------------------- ART Sync agenda ------------------------------ */
+export type SyncSectionKind =
+  | 'stream' // auto-fills from items tagged with `streamId`
+  | 'dependencies' // auto-fills from open/at-risk external dependencies
+  | 'meeting' // external meetings to report
+  | 'risks' // the persistent ROAM register
+  | 'free' // free text section
+
+export interface SyncSection {
+  id: ID
+  label: string
+  kind: SyncSectionKind
+  streamId?: ID
+  order: number
+}
+
+/* ------------------------------ Inbox / intake ---------------------------- */
+export type InboxSource = 'mail' | 'meeting' | 'sync' | 'chat' | 'idea'
+
+export const INBOX_SOURCES: { key: InboxSource; label: string }[] = [
+  { key: 'mail', label: 'Mail' },
+  { key: 'meeting', label: 'Meeting' },
+  { key: 'sync', label: 'ART Sync' },
+  { key: 'chat', label: 'Chat' },
+  { key: 'idea', label: 'Idea' },
+]
+
+/** Everything that arrives lands here first, then gets triaged. */
+export interface InboxItem {
+  id: ID
+  text: string
+  note?: string
+  source: InboxSource
+  streamId?: ID
+  createdAt: string
+  triagedAt?: string // undefined = still to triage
+  outcome?: string // what it became, e.g. "Card Kanban"
+}
+
+/* ------------------- External backlog items you monitor ------------------- */
+export type ExternalItemStatus = 'watching' | 'progress' | 'done' | 'dropped'
+
+export const EXTERNAL_STATUSES: { key: ExternalItemStatus; label: string }[] = [
+  { key: 'watching', label: 'Da seguire' },
+  { key: 'progress', label: 'In corso' },
+  { key: 'done', label: 'Chiuso' },
+  { key: 'dropped', label: 'Abbandonato' },
+]
+
+/**
+ * An item in ANOTHER team's backlog (CCoE, RunOps…) that you do not manage but
+ * must keep an eye on. `lastCheck` drives the "da ricontrollare" ageing.
+ */
+export interface ExternalItem {
+  id: ID
+  streamId: ID
+  title: string
+  ref?: string
+  link?: string
+  status: ExternalItemStatus
+  note?: string
+  lastCheck: string
+  createdAt: string
+}
+
 export type ThemeMode = 'light' | 'dark' | 'system'
 
 export interface AppData {
@@ -353,6 +443,10 @@ export interface AppData {
   roamRisks: RoamRisk[]
   weeklyReviews: Record<string, WeeklyReview>
   roadmap: RoadmapItem[]
+  streams: Stream[]
+  syncAgenda: SyncSection[]
+  inbox: InboxItem[]
+  externalItems: ExternalItem[]
   settings: { theme: ThemeMode; managerName?: string }
   updatedAt: string
 }
@@ -382,6 +476,10 @@ export function defaultData(): AppData {
     roamRisks: [],
     weeklyReviews: {},
     roadmap: [],
+    streams: [],
+    syncAgenda: [],
+    inbox: [],
+    externalItems: [],
     settings: { theme: 'system' },
     updatedAt: new Date().toISOString(),
   }

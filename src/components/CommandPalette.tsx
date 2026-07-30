@@ -15,10 +15,12 @@ import {
   IconLink,
   IconTrain,
   IconMap,
+  IconInbox,
 } from './icons'
 
 export type NavTab =
   | 'daily'
+  | 'inbox'
   | 'standup'
   | 'artsync'
   | 'kanban'
@@ -31,10 +33,10 @@ export type NavTab =
 
 const NAV: { tab: NavTab; label: string; icon: typeof IconHome }[] = [
   { tab: 'daily', label: 'Oggi', icon: IconHome },
-  { tab: 'standup', label: 'Standup', icon: IconSun },
+  { tab: 'inbox', label: 'Inbox', icon: IconInbox },
   { tab: 'artsync', label: 'ART Sync', icon: IconTrain },
   { tab: 'kanban', label: 'Kanban', icon: IconBoard },
-  { tab: 'dependencies', label: 'Dipendenze', icon: IconLink },
+  { tab: 'dependencies', label: 'Interlocutori', icon: IconLink },
   { tab: 'roadmap', label: 'Roadmap', icon: IconMap },
   { tab: 'team', label: 'Team & 1:1', icon: IconUsers },
   { tab: 'decisions', label: 'Decisioni & Azioni', icon: IconFile },
@@ -139,20 +141,20 @@ export function CommandPalette({
         },
       })
       list.push({
-        id: 'new-capture',
+        id: 'new-inbox',
         group: 'Crea',
-        label: `Aggiungi a Quick capture: «${q}»`,
-        icon: IconPlus,
+        label: `Aggiungi in Inbox: «${q}»`,
+        icon: IconInbox,
         run: () => {
           update((d) =>
-            d.quickCapture.unshift({
+            d.inbox.unshift({
               id: uid(),
               text: q,
+              source: 'idea',
               createdAt: nowISO(),
-              done: false,
             }),
           )
-          onNavigate('daily')
+          onNavigate('inbox')
           onClose()
         },
       })

@@ -20,6 +20,7 @@ import {
   IconLink,
   IconTrain,
   IconMap,
+  IconInbox,
 } from './components/icons'
 import DailyView from './views/DailyView'
 import KanbanView from './views/KanbanView'
@@ -31,10 +32,12 @@ import StandupView from './views/StandupView'
 import DependenciesView from './views/DependenciesView'
 import ArtSyncView from './views/ArtSyncView'
 import RoadmapView from './views/RoadmapView'
+import InboxView from './views/InboxView'
 import { CommandPalette } from './components/CommandPalette'
 
 type Tab =
   | 'daily'
+  | 'inbox'
   | 'standup'
   | 'artsync'
   | 'kanban'
@@ -47,10 +50,12 @@ type Tab =
 
 const NAV: { key: Tab; label: string; icon: typeof IconHome }[] = [
   { key: 'daily', label: 'Oggi', icon: IconHome },
-  { key: 'standup', label: 'Standup', icon: IconSun },
+  { key: 'inbox', label: 'Inbox', icon: IconInbox },
   { key: 'artsync', label: 'ART Sync', icon: IconTrain },
   { key: 'kanban', label: 'Kanban', icon: IconBoard },
-  { key: 'dependencies', label: 'Dipendenze', icon: IconLink },
+  { key: 'dependencies', label: 'Interlocutori', icon: IconLink },
+  // Standup disattivata: assorbita dall'ART Sync (riattivabile qui)
+  // { key: 'standup', label: 'Standup', icon: IconSun },
   { key: 'roadmap', label: 'Roadmap', icon: IconMap },
   { key: 'team', label: 'Team & 1:1', icon: IconUsers },
   // Sprint & Salute disabilitata per ora (riattivabile aggiungendo questa voce):
@@ -139,6 +144,10 @@ function Shell() {
         <nav className="flex gap-1 overflow-x-auto px-2 pb-2 lg:flex-col lg:pb-0">
           {NAV.map((n) => {
             const Icon = n.icon
+            const pending =
+              n.key === 'inbox'
+                ? data.inbox.filter((i) => !i.triagedAt).length
+                : 0
             return (
               <button
                 key={n.key}
@@ -152,6 +161,11 @@ function Shell() {
               >
                 <Icon width={18} height={18} />
                 {n.label}
+                {pending > 0 && (
+                  <span className="ml-auto rounded-full bg-[var(--color-warning)] px-1.5 text-[10px] font-semibold text-white">
+                    {pending}
+                  </span>
+                )}
               </button>
             )
           })}
@@ -171,7 +185,8 @@ function Shell() {
       {/* Main */}
       <main className="flex-1 overflow-x-hidden">
         <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
-          {tab === 'daily' && <DailyView />}
+          {tab === 'daily' && <DailyView onNavigate={(t) => setTab(t as Tab)} />}
+          {tab === 'inbox' && <InboxView />}
           {tab === 'standup' && <StandupView />}
           {tab === 'artsync' && <ArtSyncView />}
           {tab === 'kanban' && <KanbanView />}

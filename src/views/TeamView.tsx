@@ -14,6 +14,7 @@ import {
 } from '../components/ui'
 import { IconPlus, IconTrash, IconUsers, IconCalendar } from '../components/icons'
 import SkillMatrix from './SkillMatrix'
+import Delegations from './Delegations'
 import { GuideButton } from '../components/Guide'
 import {
   uid,
@@ -37,7 +38,7 @@ const MOODS: { v: Mood; emoji: string; label: string }[] = [
 export default function TeamView() {
   const { data, update } = useStore()
   const [openId, setOpenId] = useState<string | null>(null)
-  const [tab, setTab] = useState<'cards' | 'matrix'>('cards')
+  const [tab, setTab] = useState<'cards' | 'matrix' | 'delegations'>('cards')
 
   function addPerson() {
     const id = uid()
@@ -100,9 +101,22 @@ export default function TeamView() {
         >
           Skill matrix
         </button>
+        <button
+          onClick={() => setTab('delegations')}
+          className={
+            'rounded-[calc(var(--radius)-0.35rem)] px-3 py-1.5 font-medium transition-colors ' +
+            (tab === 'delegations'
+              ? 'bg-[var(--color-surface)] shadow-sm'
+              : 'text-[var(--color-muted)] hover:text-[var(--color-fg)]')
+          }
+        >
+          Deleghe
+        </button>
       </div>
 
-      {tab === 'matrix' ? (
+      {tab === 'delegations' ? (
+        <Delegations />
+      ) : tab === 'matrix' ? (
         <SkillMatrix />
       ) : data.people.length === 0 ? (
         <EmptyState

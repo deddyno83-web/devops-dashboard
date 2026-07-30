@@ -3,18 +3,19 @@ import { useStore } from '../store'
 import {
   type AppData,
   type ArtSync,
-  type ArtSyncCategory,
   type ActionItem,
   type RoamRisk,
   type RoamStatus,
   type Priority,
-  ART_CATEGORIES,
+  type SyncSection,
+  type SyncSectionKind,
   ROAM_STATUSES,
 } from '../types'
 import {
   Button,
   Card,
   Badge,
+  Modal,
   Input,
   Select,
   EmptyState,
@@ -28,6 +29,8 @@ import {
   IconTrain,
   IconBoard,
 } from '../components/icons'
+import { RowMenu, AssigneePicker } from '../components/RowMenu'
+import { StreamPicker } from '../components/Stream'
 import {
   uid,
   nowISO,
@@ -50,6 +53,13 @@ const PRIO_META: Record<Priority, { label: string; color: any }> = {
   med: { label: 'Media', color: 'warning' },
   low: { label: 'Bassa', color: 'neutral' },
 }
+const KIND_LABEL: Record<SyncSectionKind, string> = {
+  stream: 'Stream',
+  dependencies: 'Dipendenze esterne',
+  meeting: 'Meeting esterni',
+  risks: 'Rischi ROAM',
+  free: 'Libera',
+}
 
 function ensureSync(d: AppData, date: string): ArtSync {
   if (!d.artSyncs[date])
@@ -62,33 +72,42 @@ export default function ArtSyncView() {
   const [date, setDate] = useState(todayISO())
   const [actionText, setActionText] = useState('')
   const [showResolved, setShowResolved] = useState(false)
-  const sync = data.artSyncs[date]
-  const points = (sync?.points ?? []).filter((p) => p.category !== 'risk')
+  const [configOpen, setConfigOpen] = useState(false)
 
-  // Persistent ROAM register (risks live across syncs until Resolved)
+  const sync = data.artSyncs[date]
+  const agenda = [...data.syncAgenda].sort((a, b) => a.order - b.order)
+  const points = sync?.points ?? []
+
   const openRisks = data.roamRisks.filter((r) => r.roam !== 'resolved')
   const resolvedRisks = data.roamRisks.filter((r) => r.roam === 'resolved')
   const reportedRiskIds = new Set(sync?.reportedRisks ?? [])
-
-  // Unified actions store, filtered on this sync
   const actions = data.actions.filter(
     (a) => a.source === 'art-sync' && a.syncDate === date,
   )
 
-  /* ---------------- points (non-risk categories) ---------------- */
-  function addPoint(category: ArtSyncCategory, text: string) {
+  const pointsOf = (sec: SyncSection) =>
+    points.filter(
+      (p) =>
+        p.sectionId === sec.id ||
+        // legacy points without a section land in the first section
+        (!p.sectionId && p.category !== 'risk' && sec.id === agenda[0]?.id),
+    )
+
+  /* ------------------------------- points -------------------------------- */
+  function addPoint(sec: SyncSection, text: string) {
     const t = text.trim()
     if (!t) return
     update((d) => {
       ensureSync(d, date).points.push({
         id: uid(),
-        category,
+        category: 'progress',
+        sectionId: sec.id,
         text: t,
         reported: false,
       })
     })
   }
-  function patchPoint(id: string, patch: Partial<ArtSyncPointPatch>) {
+  function patchPoint(id: string, patch: Record<string, unknown>) {
     update((d) => {
       const p = ensureSync(d, date).points.find((x) => x.id === id)
       if (p) Object.assign(p, patch)
@@ -101,36 +120,74 @@ export default function ArtSyncView() {
     })
   }
 
-  /** Pull impediments / at-risk dependencies from the rest of the dashboard. */
-  function suggest(category: ArtSyncCategory) {
-    const existing = new Set(
-      points.filter((p) => p.category === category).map((p) => p.text),
-    )
-    let candidates: string[] = []
-    if (category === 'impediment') {
-      candidates = data.kanban
-        .filter((c) => c.column === 'blocked')
-        .map((c) => c.title)
-    } else if (category === 'dependency') {
-      candidates = data.dependencies
+  /** Candidates pulled from the rest of the dashboard for this section. */
+  function suggestionsFor(sec: SyncSection): string[] {
+    const existing = new Set(pointsOf(sec).map((p) => p.text))
+    let out: string[] = []
+    if (sec.kind === 'stream' && sec.streamId) {
+      const acts = (data.dailyActivities[date] ?? []).filter(
+        (a) => a.streamId === sec.streamId,
+      )
+      out.push(
+        ...acts.map(
+          (a) =>
+            `${a.text}${a.status === 'done' ? ' ✔' : a.status === 'doing' ? ' (in corso)' : ''}`,
+        ),
+      )
+      out.push(
+        ...data.actions
+          .filter((a) => a.streamId === sec.streamId && a.status !== 'done')
+          .map((a) => `${a.title}${a.owner ? ` → ${a.owner}` : ''}`),
+      )
+      out.push(
+        ...data.externalItems
+          .filter((x) => x.streamId === sec.streamId && x.status !== 'done' && x.status !== 'dropped')
+          .map((x) => `${x.ref ? `[${x.ref}] ` : ''}${x.title}`),
+      )
+      out.push(
+        ...data.dependencies
+          .filter(
+            (x) =>
+              x.streamId === sec.streamId &&
+              x.status !== 'closed' &&
+              x.status !== 'unblocked',
+          )
+          .map((x) => `${x.title} (dipendenza)`),
+      )
+    } else if (sec.kind === 'dependencies') {
+      out = data.dependencies
         .filter(
           (x) =>
             x.status !== 'closed' &&
             (x.criticality === 'high' || (daysFromToday(x.neededBy) ?? 9999) < 0),
         )
         .map((x) => (x.party ? `${x.title} · ${x.party}` : x.title))
+    } else if (sec.kind === 'meeting') {
+      out = data.inbox
+        .filter((i) => i.source === 'meeting' && !i.triagedAt)
+        .map((i) => i.text)
     }
-    const toAdd = candidates.filter((t) => t && !existing.has(t))
+    return Array.from(new Set(out.filter((t) => t && !existing.has(t))))
+  }
+
+  function suggest(sec: SyncSection) {
+    const toAdd = suggestionsFor(sec)
     if (toAdd.length === 0) return
     update((d) => {
       const s = ensureSync(d, date)
       toAdd.forEach((t) =>
-        s.points.push({ id: uid(), category, text: t, reported: false }),
+        s.points.push({
+          id: uid(),
+          category: 'progress',
+          sectionId: sec.id,
+          text: t,
+          reported: false,
+        }),
       )
     })
   }
 
-  /* ---------------- ROAM risk register ---------------- */
+  /* -------------------------------- risks -------------------------------- */
   function addRisk(text: string) {
     const t = text.trim()
     if (!t) return
@@ -156,18 +213,17 @@ export default function ArtSyncView() {
     update((d) => {
       const s = ensureSync(d, date)
       const set = new Set(s.reportedRisks ?? [])
-      if (set.has(id)) set.delete(id)
-      else set.add(id)
+      set.has(id) ? set.delete(id) : set.add(id)
       s.reportedRisks = [...set]
     })
   }
 
-  /* ---------------- actions (unified store) ---------------- */
+  /* ------------------------------- actions ------------------------------- */
   function addAction() {
     const t = actionText.trim()
     if (!t) return
     update((d) => {
-      ensureSync(d, date) // so the date shows up among recent syncs
+      ensureSync(d, date)
       d.actions.unshift({
         id: uid(),
         title: t,
@@ -191,7 +247,7 @@ export default function ArtSyncView() {
       d.actions = d.actions.filter((x) => x.id !== id)
     })
   }
-  function toDiario(a: ActionItem) {
+  function actionToDiario(a: ActionItem) {
     const today = todayISO()
     update((d) => {
       const arr = [...(d.dailyActivities[today] ?? [])]
@@ -200,24 +256,60 @@ export default function ArtSyncView() {
         text: a.title,
         status: 'todo',
         note: 'da ART Sync',
+        owner: a.owner,
+        streamId: a.streamId,
         actionId: a.id,
         createdAt: nowISO(),
       })
       d.dailyActivities[today] = arr
     })
   }
-  function toKanban(a: ActionItem) {
+  function actionToKanban(a: ActionItem) {
     update((d) => {
       d.kanban.unshift({
         id: uid(),
         title: a.title,
         column: 'todo',
         priority: a.priority ?? 'med',
-        tag: 'art-sync',
+        tag: d.streams.find((s) => s.id === a.streamId)?.name ?? 'art-sync',
         due: a.due,
         createdAt: nowISO(),
         updatedAt: nowISO(),
       })
+    })
+  }
+
+  /* ------------------------------- agenda -------------------------------- */
+  function patchSection(id: string, patch: Partial<SyncSection>) {
+    update((d) => {
+      const s = d.syncAgenda.find((x) => x.id === id)
+      if (s) Object.assign(s, patch)
+    })
+  }
+  function addSection() {
+    update((d) => {
+      d.syncAgenda.push({
+        id: uid(),
+        label: 'Nuova sezione',
+        kind: 'free',
+        order: d.syncAgenda.length,
+      })
+    })
+  }
+  function removeSection(id: string) {
+    update((d) => {
+      d.syncAgenda = d.syncAgenda.filter((x) => x.id !== id)
+    })
+  }
+  function moveSection(id: string, dir: -1 | 1) {
+    update((d) => {
+      const sorted = [...d.syncAgenda].sort((a, b) => a.order - b.order)
+      const i = sorted.findIndex((x) => x.id === id)
+      const j = i + dir
+      if (i < 0 || j < 0 || j >= sorted.length) return
+      ;[sorted[i], sorted[j]] = [sorted[j], sorted[i]]
+      sorted.forEach((s, k) => (s.order = k))
+      d.syncAgenda = sorted
     })
   }
 
@@ -226,16 +318,19 @@ export default function ArtSyncView() {
   const reported =
     points.filter((p) => p.reported).length +
     openRisks.filter((r) => reportedRiskIds.has(r.id)).length
-  const hasContent = !!sync || actions.length > 0
+  const hasContent = !!sync || actions.length > 0 || openRisks.length > 0
 
   return (
     <div>
       <PageHeader
         title="ART Sync"
-        subtitle="Coach Sync + PO Sync: progresso verso gli obiettivi di PI, impedimenti, dipendenze cross-team, rischi (ROAM) e scope."
+        subtitle="La tua agenda di presentazione, già compilata dai tuoi dati. Da qui escono le action da portare al team."
         actions={
           <>
             <GuideButton section="artsync" />
+            <Button size="sm" variant="ghost" onClick={() => setConfigOpen(true)}>
+              Agenda
+            </Button>
             <Input
               type="date"
               value={date}
@@ -243,8 +338,8 @@ export default function ArtSyncView() {
               className="h-9 w-40"
             />
             <CopyButton
-              text={buildSyncText(sync, date, openRisks, actions)}
-              disabled={!hasContent && openRisks.length === 0}
+              text={buildSyncText(data, date, agenda, points, openRisks, actions)}
+              disabled={!hasContent}
             />
           </>
         }
@@ -271,7 +366,7 @@ export default function ArtSyncView() {
       )}
 
       <div className="grid gap-5 lg:grid-cols-3">
-        {/* Prepara */}
+        {/* Agenda */}
         <Card className="p-5 lg:col-span-2">
           <div className="mb-4 flex items-center gap-2">
             <IconTrain width={16} height={16} />
@@ -284,26 +379,24 @@ export default function ArtSyncView() {
           </div>
 
           <div className="space-y-5">
-            {ART_CATEGORIES.map((cat) => {
-              if (cat.key === 'risk') {
+            {agenda.map((sec) => {
+              if (sec.kind === 'risks') {
                 return (
-                  <div key={cat.key}>
-                    <div className="mb-1.5 flex items-center gap-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
-                        {cat.label}
-                      </span>
-                      <span className="text-[11px] text-[var(--color-muted)]">
-                        registro persistente — resta finché non è Resolved
-                      </span>
-                      {resolvedRisks.length > 0 && (
-                        <button
-                          onClick={() => setShowResolved((v) => !v)}
-                          className="ml-auto text-[11px] text-[var(--color-muted)] hover:text-[var(--color-fg)]"
-                        >
-                          {showResolved ? 'nascondi' : 'mostra'} {resolvedRisks.length} risolti
-                        </button>
-                      )}
-                    </div>
+                  <div key={sec.id}>
+                    <SectionHeader
+                      label={sec.label}
+                      hint="registro persistente — resta finché non è Resolved"
+                      right={
+                        resolvedRisks.length > 0 && (
+                          <button
+                            onClick={() => setShowResolved((v) => !v)}
+                            className="text-[11px] text-[var(--color-muted)] hover:text-[var(--color-fg)]"
+                          >
+                            {showResolved ? 'nascondi' : 'mostra'} {resolvedRisks.length} risolti
+                          </button>
+                        )
+                      }
+                    />
                     <div className="space-y-1.5">
                       {openRisks.map((r) => (
                         <RiskRow
@@ -332,26 +425,35 @@ export default function ArtSyncView() {
                   </div>
                 )
               }
-              const pts = points.filter((p) => p.category === cat.key)
+
+              const pts = pointsOf(sec)
+              const stream = data.streams.find((s) => s.id === sec.streamId)
+              const nSugg = suggestionsFor(sec).length
               return (
-                <div key={cat.key}>
-                  <div className="mb-1.5 flex items-center gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-[var(--color-primary)]">
-                      {cat.label}
-                    </span>
-                    <span className="text-[11px] text-[var(--color-muted)]">{cat.hint}</span>
-                    {cat.suggestable && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="ml-auto"
-                        onClick={() => suggest(cat.key)}
-                        title="Prendi dai tuoi dati (Kanban bloccati / Dipendenze critiche)"
-                      >
-                        ↻ suggerisci
-                      </Button>
-                    )}
-                  </div>
+                <div key={sec.id}>
+                  <SectionHeader
+                    label={sec.label}
+                    color={stream?.color}
+                    hint={
+                      sec.kind === 'dependencies'
+                        ? 'critiche o scadute'
+                        : sec.kind === 'meeting'
+                          ? 'incontri con esterni da riportare'
+                          : stream?.name
+                    }
+                    right={
+                      nSugg > 0 && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => suggest(sec)}
+                          title="Componi dai tuoi dati (attività, action, dipendenze, backlog esterni)"
+                        >
+                          ↻ componi ({nSugg})
+                        </Button>
+                      )
+                    }
+                  />
                   <div className="space-y-1.5">
                     {pts.map((p) => (
                       <div
@@ -379,12 +481,23 @@ export default function ArtSyncView() {
                               p.reported && 'text-[var(--color-muted)]',
                             )}
                           />
-                          <button
-                            onClick={() => removePoint(p.id)}
-                            className="text-[var(--color-muted)] opacity-0 transition-opacity hover:text-[var(--color-danger)] group-hover:opacity-100"
-                          >
-                            <IconTrash width={14} height={14} />
-                          </button>
+                          <RowMenu
+                            items={[
+                              {
+                                label: '→ Sposta in…',
+                                onClick: () => {
+                                  const next =
+                                    agenda[(agenda.findIndex((a) => a.id === sec.id) + 1) % agenda.length]
+                                  if (next) patchPoint(p.id, { sectionId: next.id })
+                                },
+                              },
+                              {
+                                label: 'Elimina',
+                                onClick: () => removePoint(p.id),
+                                danger: true,
+                              },
+                            ]}
+                          />
                         </div>
                         <input
                           value={p.note ?? ''}
@@ -394,7 +507,7 @@ export default function ArtSyncView() {
                         />
                       </div>
                     ))}
-                    <AddLine onAdd={(t) => addPoint(cat.key, t)} />
+                    <AddLine onAdd={(t) => addPoint(sec, t)} />
                   </div>
                 </div>
               )
@@ -402,7 +515,7 @@ export default function ArtSyncView() {
           </div>
         </Card>
 
-        {/* Action in uscita — vive nello store unificato (Decisioni & Azioni) */}
+        {/* Actions */}
         <Card className="h-fit p-5">
           <div className="mb-3 flex items-center gap-2">
             <h3 className="text-sm font-semibold">Action in uscita</h3>
@@ -411,8 +524,8 @@ export default function ArtSyncView() {
             </Badge>
           </div>
           <p className="mb-3 text-[11px] text-[var(--color-muted)]">
-            Le action vivono in «Decisioni & Azioni» (tag ART Sync): un solo stato,
-            ovunque le guardi.
+            Assegna owner e portale nella giornata. Le trovi anche in «Decisioni &
+            Azioni» e in «Team → Deleghe».
           </p>
           <div className="flex gap-2">
             <Input
@@ -428,7 +541,7 @@ export default function ArtSyncView() {
 
           {actions.length === 0 ? (
             <p className="mt-3 py-2 text-center text-xs text-[var(--color-muted)]">
-              Nessuna action. Dall'ART Sync deve uscire almeno un'azione con owner.
+              Dall'ART Sync deve uscire almeno un'azione con owner.
             </p>
           ) : (
             <div className="mt-3 space-y-2">
@@ -461,22 +574,29 @@ export default function ArtSyncView() {
                           done && 'text-[var(--color-muted)] line-through',
                         )}
                       />
-                      <Badge color={PRIO_META[a.priority ?? 'med'].color}>
-                        {PRIO_META[a.priority ?? 'med'].label}
-                      </Badge>
-                      <button
-                        onClick={() => removeAction(a.id)}
-                        className="text-[var(--color-muted)] opacity-0 transition-opacity hover:text-[var(--color-danger)] group-hover:opacity-100"
-                      >
-                        <IconTrash width={14} height={14} />
-                      </button>
+                      <AssigneePicker
+                        owner={a.owner}
+                        people={data.people}
+                        onAssign={(name) => patchAction(a.id, { owner: name })}
+                      />
+                      <RowMenu
+                        items={[
+                          { label: '→ Diario di oggi', onClick: () => actionToDiario(a) },
+                          { label: '→ Card Kanban', onClick: () => actionToKanban(a) },
+                          {
+                            label: 'Elimina',
+                            onClick: () => removeAction(a.id),
+                            danger: true,
+                          },
+                        ]}
+                      />
                     </div>
                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-7">
-                      <input
-                        value={a.owner ?? ''}
-                        onChange={(e) => patchAction(a.id, { owner: e.target.value })}
-                        placeholder="owner"
-                        className="h-7 w-24 rounded border bg-transparent px-2 text-xs outline-none focus:border-[var(--color-primary)]"
+                      <StreamPicker
+                        streamId={a.streamId}
+                        streams={data.streams}
+                        onPick={(id) => patchAction(a.id, { streamId: id })}
+                        compact
                       />
                       <input
                         type="date"
@@ -495,22 +615,9 @@ export default function ArtSyncView() {
                         <option value="med">Media</option>
                         <option value="low">Bassa</option>
                       </Select>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => toDiario(a)}
-                        title="Portala nel Diario di oggi (stato collegato)"
-                      >
-                        → Diario
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => toKanban(a)}
-                        title="Crea una card nel Kanban"
-                      >
-                        <IconBoard width={13} height={13} /> Kanban
-                      </Button>
+                      <Badge color={PRIO_META[a.priority ?? 'med'].color}>
+                        {PRIO_META[a.priority ?? 'med'].label}
+                      </Badge>
                     </div>
                   </div>
                 )
@@ -525,10 +632,127 @@ export default function ArtSyncView() {
           <EmptyState
             icon={<IconTrain width={28} height={28} />}
             title={`Nessuna preparazione per il ${fmtDate(date)}`}
-            hint="Aggiungi i punti da riportare (o usa «↻ suggerisci» per pescare impedimenti e dipendenze critiche dai tuoi dati). Timebox del meeting: 30-60 minuti — si identificano i problemi, non si risolvono."
+            hint="Usa «↻ componi» in ogni sezione per pescare dai tuoi dati (attività, action, dipendenze, backlog esterni), poi aggiungi a mano ciò che manca. Timebox 30-60 min: si identificano i problemi, non si risolvono."
           />
         </div>
       )}
+
+      {/* Agenda config */}
+      <Modal
+        open={configOpen}
+        onClose={() => setConfigOpen(false)}
+        title="Agenda ART Sync"
+        wide
+        footer={
+          <>
+            <Button onClick={addSection}>
+              <IconPlus width={15} height={15} /> Aggiungi sezione
+            </Button>
+            <Button variant="primary" onClick={() => setConfigOpen(false)}>
+              Chiudi
+            </Button>
+          </>
+        }
+      >
+        <p className="mb-3 text-xs text-[var(--color-muted)]">
+          Queste sono le sezioni che presenti. «Stream» si compila dagli item
+          taggati con quel flusso; «Dipendenze» e «Meeting» pescano dalle rispettive
+          sezioni; «Rischi» mostra il registro ROAM.
+        </p>
+        <div className="space-y-2">
+          {agenda.map((sec, i) => (
+            <div key={sec.id} className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-col">
+                <button
+                  onClick={() => moveSection(sec.id, -1)}
+                  disabled={i === 0}
+                  className="text-xs text-[var(--color-muted)] disabled:opacity-30"
+                >
+                  ▲
+                </button>
+                <button
+                  onClick={() => moveSection(sec.id, 1)}
+                  disabled={i === agenda.length - 1}
+                  className="text-xs text-[var(--color-muted)] disabled:opacity-30"
+                >
+                  ▼
+                </button>
+              </div>
+              <Input
+                value={sec.label}
+                onChange={(e) => patchSection(sec.id, { label: e.target.value })}
+                className="w-52"
+              />
+              <Select
+                value={sec.kind}
+                onChange={(e) =>
+                  patchSection(sec.id, { kind: e.target.value as SyncSectionKind })
+                }
+                className="h-9"
+              >
+                {(Object.keys(KIND_LABEL) as SyncSectionKind[]).map((k) => (
+                  <option key={k} value={k}>
+                    {KIND_LABEL[k]}
+                  </option>
+                ))}
+              </Select>
+              {sec.kind === 'stream' && (
+                <Select
+                  value={sec.streamId ?? ''}
+                  onChange={(e) =>
+                    patchSection(sec.id, { streamId: e.target.value || undefined })
+                  }
+                  className="h-9"
+                >
+                  <option value="">— stream —</option>
+                  {data.streams.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+              <button
+                onClick={() => removeSection(sec.id)}
+                className="ml-auto text-[var(--color-muted)] hover:text-[var(--color-danger)]"
+              >
+                <IconTrash width={15} height={15} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </Modal>
+    </div>
+  )
+}
+
+function SectionHeader({
+  label,
+  hint,
+  right,
+  color,
+}: {
+  label: string
+  hint?: string
+  right?: React.ReactNode
+  color?: string
+}) {
+  return (
+    <div className="mb-1.5 flex items-center gap-2">
+      {color && (
+        <span
+          className="h-2.5 w-2.5 shrink-0 rounded-full"
+          style={{ background: color }}
+        />
+      )}
+      <span
+        className="text-xs font-semibold uppercase tracking-wide"
+        style={{ color: color ?? 'var(--color-primary)' }}
+      >
+        {label}
+      </span>
+      {hint && <span className="text-[11px] text-[var(--color-muted)]">{hint}</span>}
+      <span className="ml-auto">{right}</span>
     </div>
   )
 }
@@ -622,12 +846,6 @@ function RiskRow({
   )
 }
 
-type ArtSyncPointPatch = {
-  text: string
-  note: string
-  reported: boolean
-}
-
 function AddLine({ onAdd }: { onAdd: (t: string) => void }) {
   const [t, setT] = useState('')
   return (
@@ -646,43 +864,41 @@ function AddLine({ onAdd }: { onAdd: (t: string) => void }) {
   )
 }
 
+/** Builds the presentation text in the user's own agenda format. */
 function buildSyncText(
-  sync: ArtSync | undefined,
+  data: AppData,
   date: string,
+  agenda: SyncSection[],
+  points: ArtSync['points'],
   openRisks: RoamRisk[],
   actions: ActionItem[],
 ): string {
   const L: string[] = [`ART Sync — ${fmtDate(date)}`, '']
-  ART_CATEGORIES.forEach((cat) => {
-    if (cat.key === 'risk') {
-      if (openRisks.length === 0) return
-      L.push('RISCHI (ROAM):')
+  agenda.forEach((sec) => {
+    L.push(`${sec.label}:`)
+    if (sec.kind === 'risks') {
       openRisks.forEach((r) => {
-        const parts = []
-        if (r.roam) parts.push(r.roam)
-        if (r.owner) parts.push(r.owner)
-        L.push(
-          `- ${r.title}${parts.length ? ` [${parts.join(' · ')}]` : ''}${r.note ? ` (${r.note})` : ''}`,
-        )
+        const meta = [r.roam, r.owner].filter(Boolean)
+        L.push(`- ${r.title}${meta.length ? ` [${meta.join(' · ')}]` : ''}`)
       })
-      L.push('')
-      return
+    } else {
+      points
+        .filter(
+          (p) =>
+            p.sectionId === sec.id ||
+            (!p.sectionId && p.category !== 'risk' && sec.id === agenda[0]?.id),
+        )
+        .forEach((p) => L.push(`- ${p.text}${p.note ? ` (${p.note})` : ''}`))
     }
-    const pts = (sync?.points ?? []).filter((p) => p.category === cat.key)
-    if (pts.length === 0) return
-    L.push(`${cat.label.toUpperCase()}:`)
-    pts.forEach((p) => {
-      L.push(`- ${p.text}${p.note ? ` (${p.note})` : ''}`)
-    })
     L.push('')
   })
   if (actions.length) {
-    L.push('ACTION IN USCITA:')
+    L.push('Action in uscita:')
     actions.forEach((a) => {
-      const parts = [PRIO_META[a.priority ?? 'med'].label]
-      if (a.owner) parts.push(a.owner)
-      if (a.due) parts.push(`scad. ${fmtDate(a.due)}`)
-      L.push(`- ${a.title} (${parts.join(' · ')})`)
+      const meta = [PRIO_META[a.priority ?? 'med'].label]
+      if (a.owner) meta.push(a.owner)
+      if (a.due) meta.push(`scad. ${fmtDate(a.due)}`)
+      L.push(`- ${a.title} (${meta.join(' · ')})`)
     })
   }
   return L.join('\n')
