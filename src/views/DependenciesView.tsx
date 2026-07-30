@@ -195,18 +195,54 @@ export default function DependenciesView() {
   const needsRecheck = (x: ExternalItem) =>
     x.status !== 'done' && x.status !== 'dropped' && ageInDays(x.lastCheck) >= RECHECK_DAYS
 
-  /* --------------------------------- KPI --------------------------------- */
-  const kpis = [
-    { label: 'Aperte', value: deps.filter(isOpen).length, color: 'var(--color-primary)' },
-    { label: 'Scadute', value: deps.filter(isOverdue).length, color: 'var(--color-danger)' },
-    { label: 'Da sollecitare', value: deps.filter(isStale).length, color: 'var(--color-warning)' },
-    { label: 'Da escalare', value: deps.filter(needsEscalation).length, color: 'var(--color-danger)' },
-    {
-      label: 'Backlog da ricontrollare',
-      value: data.externalItems.filter(needsRecheck).length,
-      color: 'var(--color-warning)',
-    },
-  ]
+  /* --------------------- per-counterpart status summary ------------------- */
+  type Health = 'critical' | 'attention' | 'ok' | 'idle'
+  const HEALTH: Record<Health, { color: string; label: string }> = {
+    critical: { color: 'var(--color-danger)', label: 'Da escalare' },
+    attention: { color: 'var(--color-warning)', label: 'Da sollecitare' },
+    ok: { color: 'var(--color-success)', label: 'Sotto controllo' },
+    idle: { color: 'var(--color-border)', label: 'Niente in corso' },
+  }
+
+  const summaries = data.streams.map((s) => {
+    const sDeps = deps.filter((x) => x.streamId === s.id)
+    const sExt = data.externalItems.filter((x) => x.streamId === s.id)
+    const open = sDeps.filter(isOpen).length
+    const overdue = sDeps.filter(isOverdue).length
+    const escalate = sDeps.filter(needsEscalation).length
+    const stale = sDeps.filter(isStale).length
+    const recheck = sExt.filter(needsRecheck).length
+    const watching = sExt.filter(
+      (x) => x.status !== 'done' && x.status !== 'dropped',
+    ).length
+    const openActions = data.actions.filter(
+      (a) => a.streamId === s.id && a.status !== 'done',
+    ).length
+    const lastTouch = [
+      ...sDeps.map((x) => x.lastUpdate),
+      ...sExt.map((x) => x.lastCheck),
+    ].sort().pop()
+    const health: Health =
+      overdue > 0 || escalate > 0
+        ? 'critical'
+        : stale > 0 || recheck > 0
+          ? 'attention'
+          : open > 0 || watching > 0 || openActions > 0
+            ? 'ok'
+            : 'idle'
+    return {
+      stream: s,
+      open,
+      overdue,
+      escalate,
+      stale,
+      recheck,
+      watching,
+      openActions,
+      lastTouch,
+      health,
+    }
+  })
 
   const matches = (x: Dependency) => {
     if (openOnly && x.status === 'closed') return false
@@ -256,53 +292,83 @@ export default function DependenciesView() {
         }
       />
 
-      <div className="mb-4 grid grid-cols-2 gap-2 lg:grid-cols-5">
-        {kpis.map((k) => (
-          <div
-            key={k.label}
-            className="flex items-center gap-3 rounded-[var(--radius)] border bg-[var(--color-surface)] px-3 py-2"
-          >
-            <span className="h-7 w-1 rounded-full" style={{ background: k.color }} />
-            <div className="leading-tight">
-              <div className="text-xl font-semibold tabular-nums">{k.value}</div>
-              <div className="text-[11px] text-[var(--color-muted)]">{k.label}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Stream tabs */}
-      <div className="mb-4 flex flex-wrap items-center gap-1.5 text-xs">
-        <button
-          onClick={() => setFStream('')}
-          className={cn(
-            'rounded-full border px-2.5 py-1',
-            !fStream
-              ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
-              : 'text-[var(--color-muted)] hover:bg-[var(--color-surface-2)]',
-          )}
-        >
-          Tutti
-        </button>
-        {data.streams.map((s) => {
-          const n = deps.filter((x) => x.streamId === s.id && isOpen(x)).length
+      {/* Counterpart status cards — lo stato a colpo d'occhio */}
+      <div className="mb-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {summaries.map((s) => {
+          const active = fStream === s.stream.id
+          const meta = HEALTH[s.health]
           return (
             <button
-              key={s.id}
-              onClick={() => setFStream(s.id)}
+              key={s.stream.id}
+              onClick={() => setFStream(active ? '' : s.stream.id)}
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1',
-                fStream === s.id
-                  ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
-                  : 'text-[var(--color-muted)] hover:bg-[var(--color-surface-2)]',
+                'rounded-[var(--radius)] border bg-[var(--color-surface)] p-3 text-left transition-shadow hover:shadow-md',
+                active && 'ring-2 ring-[var(--color-primary)]',
               )}
             >
-              <StreamDot stream={s} />
-              {s.name}
-              {n > 0 && <span className="opacity-70">({n})</span>}
+              <div className="flex items-center gap-2">
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ background: meta.color }}
+                />
+                <span className="truncate text-sm font-semibold">{s.stream.name}</span>
+                <span
+                  className="ml-auto shrink-0 text-[10px] font-medium"
+                  style={{ color: meta.color }}
+                >
+                  {meta.label}
+                </span>
+              </div>
+
+              <div className="mt-2 flex items-baseline gap-3">
+                <span className="text-2xl font-semibold tabular-nums">{s.open}</span>
+                <span className="text-[11px] text-[var(--color-muted)]">
+                  dipendenze aperte
+                </span>
+              </div>
+
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {s.overdue > 0 && <Badge color="danger">{s.overdue} scadute</Badge>}
+                {s.escalate > 0 && <Badge color="danger">{s.escalate} da escalare</Badge>}
+                {s.stale > 0 && <Badge color="warning">{s.stale} da sollecitare</Badge>}
+                {s.recheck > 0 && (
+                  <Badge color="warning">{s.recheck} da ricontrollare</Badge>
+                )}
+                {s.watching > 0 && <Badge color="neutral">{s.watching} in backlog</Badge>}
+                {s.openActions > 0 && (
+                  <Badge color="primary">{s.openActions} action</Badge>
+                )}
+              </div>
+
+              <p className="mt-2 text-[11px] text-[var(--color-muted)]">
+                {s.lastTouch
+                  ? `ultimo contatto ${relativeDays(s.lastTouch.slice(0, 10))}`
+                  : 'nessun contatto registrato'}
+              </p>
             </button>
           )
         })}
+      </div>
+
+      {/* Toolbar */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {fStream ? (
+          <span className="inline-flex items-center gap-1.5 text-sm font-medium">
+            <StreamDot stream={streamOf(fStream)} />
+            {streamOf(fStream)?.name}
+            <button
+              onClick={() => setFStream('')}
+              className="text-[var(--color-muted)] hover:text-[var(--color-fg)]"
+              title="Mostra tutti"
+            >
+              <IconX width={14} height={14} />
+            </button>
+          </span>
+        ) : (
+          <span className="text-sm font-medium text-[var(--color-muted)]">
+            Tutti gli interlocutori
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <Input
             value={fText}
@@ -317,18 +383,6 @@ export default function DependenciesView() {
           >
             Solo aperte
           </Button>
-          {(fText || fStream) && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setFText('')
-                setFStream('')
-              }}
-            >
-              <IconX width={14} height={14} />
-            </Button>
-          )}
         </div>
       </div>
 

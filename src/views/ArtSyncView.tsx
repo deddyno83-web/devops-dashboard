@@ -255,9 +255,9 @@ export default function ArtSyncView() {
         id: uid(),
         text: a.title,
         status: 'todo',
-        note: 'da ART Sync',
         owner: a.owner,
         streamId: a.streamId,
+        source: 'art-sync',
         actionId: a.id,
         createdAt: nowISO(),
       })

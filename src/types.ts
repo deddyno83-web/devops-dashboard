@@ -201,6 +201,7 @@ export interface Activity {
   note?: string
   owner?: string // assigned team member (for monitoring / delegation)
   streamId?: ID
+  source?: 'art-sync' | 'inbox' // where the activity came from
   createdAt: string
   carryCount?: number // times carried over from previous days
   actionId?: ID // linked ActionItem — completing the activity completes the action

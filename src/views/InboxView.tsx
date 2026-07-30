@@ -18,6 +18,7 @@ import { IconPlus, IconTrash, IconInbox, IconCheck } from '../components/icons'
 import { RowMenu, AssigneePicker } from '../components/RowMenu'
 import { StreamPicker } from '../components/Stream'
 import { uid, nowISO, todayISO, fmtDate, fmtTime, cn } from '../lib/utils'
+import { sectionForStream } from '../lib/sync'
 import { GuideButton } from '../components/Guide'
 
 const SOURCE_COLOR: Record<InboxSource, any> = {
@@ -89,6 +90,7 @@ export default function InboxView() {
         status: 'todo',
         note: it.note,
         streamId: it.streamId,
+        source: 'inbox',
         createdAt: nowISO(),
       })
       d.dailyActivities[today] = arr
@@ -192,13 +194,10 @@ export default function InboxView() {
     update((d) => {
       if (!d.artSyncs[tmr])
         d.artSyncs[tmr] = { date: tmr, points: [], actions: [], createdAt: nowISO() }
-      const section =
-        d.syncAgenda.find((s) => s.kind === 'stream' && s.streamId === it.streamId) ??
-        d.syncAgenda[0]
       d.artSyncs[tmr].points.push({
         id: uid(),
         category: 'progress',
-        sectionId: section?.id,
+        sectionId: sectionForStream(d, it.streamId),
         text: it.text,
         note: it.note,
         reported: false,

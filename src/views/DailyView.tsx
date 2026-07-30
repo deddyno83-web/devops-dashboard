@@ -28,6 +28,7 @@ import { PageHeader } from '../components/ui'
 import { GuideButton } from '../components/Guide'
 import { RowMenu, AssigneePicker } from '../components/RowMenu'
 import { StreamPicker } from '../components/Stream'
+import { sectionForStream } from '../lib/sync'
 import { KANBAN_COLUMNS } from '../types'
 
 export default function DailyView({
@@ -147,7 +148,13 @@ export default function DailyView({
   function assignActivity(id: string, owner: string | undefined) {
     update((d) => {
       const a = (d.dailyActivities[today] ?? []).find((x) => x.id === id)
-      if (a) a.owner = owner
+      if (!a) return
+      a.owner = owner
+      // Keep the linked action (e.g. from ART Sync) in sync: one owner everywhere.
+      if (a.actionId) {
+        const act = d.actions.find((x) => x.id === a.actionId)
+        if (act) act.owner = owner
+      }
     })
   }
 
@@ -175,6 +182,7 @@ export default function DailyView({
       d.artSyncs[tmr].points.push({
         id: uid(),
         category: 'progress',
+        sectionId: sectionForStream(d, a.streamId),
         text: a.owner ? `${a.text} (→ ${a.owner})` : a.text,
         note: a.note,
         reported: false,
@@ -614,6 +622,16 @@ export default function DailyView({
                           : '')
                       }
                     />
+                    {a.source === 'art-sync' && (
+                      <Badge color="primary" className="shrink-0">
+                        ART Sync
+                      </Badge>
+                    )}
+                    {a.source === 'inbox' && (
+                      <Badge color="neutral" className="shrink-0">
+                        Inbox
+                      </Badge>
+                    )}
                     {(a.carryCount ?? 0) > 0 && (
                       <Badge color={(a.carryCount ?? 0) >= 2 ? 'danger' : 'warning'}>
                         {(a.carryCount ?? 0) + 1}° giorno
