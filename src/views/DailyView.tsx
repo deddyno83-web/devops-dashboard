@@ -341,6 +341,9 @@ export default function DailyView({
         n += data.actions.filter(
           (a) => a.owner && a.status !== 'done' && ageInDays(a.createdAt) >= 5,
         ).length
+        n += data.inbox.filter(
+          (i) => i.owner && !i.triagedAt && ageInDays(i.createdAt) >= 5,
+        ).length
         return n
       })(),
       tab: 'team',

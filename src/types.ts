@@ -387,6 +387,8 @@ export interface InboxItem {
   note?: string
   source: InboxSource
   streamId?: ID
+  /** Assigned while still in the inbox: stays visible so it can be monitored. */
+  owner?: string
   createdAt: string
   triagedAt?: string // undefined = still to triage
   outcome?: string // what it became, e.g. "Card Kanban"

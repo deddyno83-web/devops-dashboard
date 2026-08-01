@@ -89,6 +89,7 @@ export default function InboxView() {
         text: it.text,
         status: 'todo',
         note: it.note,
+        owner: it.owner,
         streamId: it.streamId,
         source: 'inbox',
         createdAt: nowISO(),
@@ -107,7 +108,10 @@ export default function InboxView() {
       d.kanban.unshift({
         id: uid(),
         title: it.text,
-        notes: it.note,
+        notes:
+          [it.note, it.owner ? `Assegnata a: ${it.owner}` : '']
+            .filter(Boolean)
+            .join('\n') || undefined,
         column: 'todo',
         priority: 'med',
         tag: d.streams.find((s) => s.id === it.streamId)?.name,
@@ -145,12 +149,12 @@ export default function InboxView() {
     })
   }
 
-  function toDelegated(it: InboxItem, owner?: string) {
+  function toDelegated(it: InboxItem) {
     update((d) => {
       d.actions.unshift({
         id: uid(),
         title: it.text,
-        owner,
+        owner: it.owner,
         status: 'todo',
         priority: 'med',
         streamId: it.streamId,
@@ -159,7 +163,7 @@ export default function InboxView() {
       const x = d.inbox.find((y) => y.id === it.id)
       if (x) {
         x.triagedAt = nowISO()
-        x.outcome = owner ? `Delegata a ${owner}` : 'Action item'
+        x.outcome = it.owner ? `Delegata a ${it.owner}` : 'Action item'
       }
     })
   }
@@ -221,6 +225,11 @@ export default function InboxView() {
             <Badge color={pending.length > 0 ? 'warning' : 'success'}>
               {pending.length === 0 ? 'Inbox vuota 🎯' : `${pending.length} da smistare`}
             </Badge>
+            {pending.some((i) => i.owner) && (
+              <Badge color="primary">
+                {pending.filter((i) => i.owner).length} assegnate
+              </Badge>
+            )}
           </>
         }
       />
@@ -331,15 +340,21 @@ export default function InboxView() {
                   {fmtDate(it.createdAt.slice(0, 10))} {fmtTime(it.createdAt)}
                 </span>
                 <AssigneePicker
+                  owner={it.owner}
                   people={data.people}
-                  onAssign={(name) => name && toDelegated(it, name)}
+                  onAssign={(name) => patch(it.id, { owner: name })}
                 />
                 <RowMenu
                   items={[
                     { label: '→ Attività di oggi', onClick: () => toActivity(it) },
                     { label: '→ Card Kanban', onClick: () => toKanban(it) },
                     { label: '→ Dipendenza esterna', onClick: () => toDependency(it) },
-                    { label: '→ Action item', onClick: () => toDelegated(it) },
+                    {
+                      label: it.owner
+                        ? `→ Action item (${it.owner})`
+                        : '→ Action item',
+                      onClick: () => toDelegated(it),
+                    },
                     { label: '→ Porta in ART Sync', onClick: () => toArtSync(it) },
                     { label: '→ Roadmap', onClick: () => toRoadmap(it) },
                     {

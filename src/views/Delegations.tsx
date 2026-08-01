@@ -14,7 +14,7 @@ import {
 interface Row {
   id: string
   title: string
-  kind: 'Attività' | 'Action'
+  kind: 'Attività' | 'Action' | 'Inbox'
   status: 'todo' | 'doing' | 'done'
   due?: string
   streamId?: string
@@ -56,6 +56,19 @@ export default function Delegations() {
       due: a.due,
       streamId: a.streamId,
       age: ageInDays(a.createdAt),
+    })
+  }
+  // Items assigned while still sitting in the inbox — they stay monitorable
+  // even before they are triaged into something else.
+  for (const i of data.inbox) {
+    if (!i.owner || i.triagedAt) continue
+    push(i.owner, {
+      id: i.id,
+      title: i.text,
+      kind: 'Inbox',
+      status: 'todo',
+      streamId: i.streamId,
+      age: ageInDays(i.createdAt),
     })
   }
 
