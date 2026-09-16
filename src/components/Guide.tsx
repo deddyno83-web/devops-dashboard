@@ -28,29 +28,47 @@ interface Guide {
 
 const GUIDES: Record<GuideKey, Guide> = {
   inbox: {
-    title: 'Inbox',
+    title: 'Attività in ingresso',
     intro:
-      'Il punto unico di atterraggio di tutto ciò che ti arriva: mail che toccano l’infrastruttura, richieste, note di meeting. Serve a non perdere niente e a decidere una volta sola cosa farne.',
+      'Tutto ciò che ti arriva e devi gestire: mail che toccano l’infrastruttura, richieste, note di meeting. Ogni attività percorre una coda — Nuove → Viste → In corso → Chiuse — così non resta mai nulla fuori dal radar.',
     sections: [
       {
-        title: 'Come si usa',
+        title: 'La coda',
         items: [
-          'Scegli la fonte (Mail / Meeting / ART Sync / Chat / Idea) e lo stream (CCoE, Digital CCoE, Team interno, RunOps…), poi incolla: una riga = un item.',
-          'Smista ogni item col menu ⋯: → Attività di oggi · → Card Kanban · → Dipendenza esterna · → Action item · → Porta in ART Sync · → Roadmap · Archivia.',
-          'L’avatar assegna l’item a una persona e lo trasforma in una delega (lo trovi in Team & 1:1 → Deleghe).',
-          'Il badge nel menu laterale dice quanti item restano da smistare: l’obiettivo è chiudere la giornata a zero.',
+          'Scegli fonte (Mail / Meeting / ART Sync / Chat / Idea) e stream, poi incolla: una riga = un’attività. Entrano come «Nuove».',
+          'Avanza lo stato dal menu a tendina sulla riga: Nuove → Viste (l’hai letta) → In corso (ci stai lavorando) → Chiuse.',
+          'I filtri in alto mostrano quante ne hai per stato; «Aperte» è la vista di lavoro predefinita.',
+          'Un’attività ferma in «Nuove» da 3+ giorni viene segnalata: è il campanello che stai accumulando arretrato.',
+        ],
+      },
+      {
+        title: 'Urgenze e assegnazione',
+        items: [
+          'Il pulsante ⚠ segna un’attività come URGENTE: bordo rosso e sempre in cima alla lista, in qualunque filtro.',
+          'Puoi marcare urgente anche in fase di inserimento, prima di incollare il blocco.',
+          'L’avatar assegna a una persona del team: l’attività RESTA in coda (così la monitori) e compare in Team & 1:1 → Deleghe.',
+          'Il menu ⋯ la smista dove serve: → Attività di oggi · → Card Kanban · → Ticket esterno · → Action item · → Porta in ART Sync · → Roadmap.',
+        ],
+      },
+      {
+        title: 'RACI',
+        items: [
+          'Le lettere R A C I sulla riga aprono la matrice: Responsible (chi esegue) · Accountable (unico responsabile finale) · Consulted (da consultare) · Informed (da informare).',
+          'Un solo Accountable: è la regola che rende la RACI utile invece che decorativa.',
+          'Il tab «RACI» in alto è il quadro di monitoraggio: tutte le attività con una RACI definita, con chi fa cosa.',
+          'La RACI segue l’attività quando la porti nel Diario di oggi.',
         ],
       },
       {
         title: 'Buone pratiche',
         items: [
           'Cattura subito, decidi dopo: incollare costa 2 secondi, ricostruire una richiesta persa costa un’ora.',
-          'Smista almeno una volta al giorno (fine mattina o fine giornata): l’inbox è un punto di transito, non un archivio.',
+          'Passa la coda almeno una volta al giorno: è un punto di transito, non un archivio.',
           'Tagga sempre lo stream: è ciò che fa comporre da sola l’agenda dell’ART Sync.',
         ],
       },
     ],
-    cadence: 'Cattura in continuo · smistamento almeno 1 volta al giorno.',
+    cadence: 'Cattura in continuo · passa la coda almeno 1 volta al giorno.',
   },
   daily: {
     title: 'Oggi',
@@ -158,18 +176,18 @@ const GUIDES: Record<GuideKey, Guide> = {
     cadence: 'Aggiorna durante la giornata · review delle card ferme una volta a settimana.',
   },
   dependencies: {
-    title: 'Interlocutori',
+    title: 'Ticket',
     intro:
-      'Il quadro di ciò che hai aperto con gli altri team (CCoE, Digital CCoE, RunOps…): dipendenze, item del loro backlog che monitori e action verso di loro. Le dipendenze sono la «D» del RAID log e la causa #1 di lavoro fermo.',
+      'Il registro dei ticket che apri verso i team esterni (CCoE, Digital CCoE, RunOps…) e di quelli che segui dal loro backlog. Sono la «D» del RAID log e la causa #1 di lavoro fermo: qui restano sempre sotto controllo.',
     sections: [
       {
         title: 'Come si usa',
         items: [
-          'I chip in alto filtrano per interlocutore: selezionane uno per vedere solo il suo quadro (e per poter aggiungere item al suo backlog).',
-          '«Nuova dipendenza»: cosa serve, da chi (stream), tipo, riferimento e link, criticità, «needed by» e owner che la segue.',
-          '«Sollecita» registra il follow-up: dopo 3 solleciti l’app marca «da escalare» — a quel punto portala al tuo responsabile o all’RTE.',
-          '«Backlog monitorato»: gli item del backlog ALTRUI che segui ma non gestisci. Premi «Controllato» quando li verifichi: dopo 7 giorni senza check compare «da ricontrollare».',
-          'La barra KPI è il semaforo: Aperte · Scadute · Da sollecitare · Da escalare · Backlog da ricontrollare.',
+          'Le schede in alto danno lo stato per interlocutore a colpo d’occhio: 🔴 da escalare · 🟡 da sollecitare · 🟢 sotto controllo. Cliccale per filtrare.',
+          'Aggiunta rapida: seleziona l’interlocutore e scrivi «INC0012345 apertura firewall» — il riferimento viene staccato in automatico.',
+          'Il campo «Origine» distingue i ticket aperti da noi da quelli presi dal LORO backlog che stai solo monitorando.',
+          'Clicca il titolo per la scheda completa: tipo, link, criticità, «needed by», chi lo segue, cosa blocca.',
+          '«Sollecita» registra il follow-up: dopo 3 solleciti il ticket viene marcato «da escalare» — a quel punto portalo al tuo responsabile o all’RTE.',
         ],
       },
       {

@@ -33,10 +33,10 @@ export type NavTab =
 
 const NAV: { tab: NavTab; label: string; icon: typeof IconHome }[] = [
   { tab: 'daily', label: 'Oggi', icon: IconHome },
-  { tab: 'inbox', label: 'Inbox', icon: IconInbox },
+  { tab: 'inbox', label: 'Attività in ingresso', icon: IconInbox },
   { tab: 'artsync', label: 'ART Sync', icon: IconTrain },
   { tab: 'kanban', label: 'Kanban', icon: IconBoard },
-  { tab: 'dependencies', label: 'Interlocutori', icon: IconLink },
+  { tab: 'dependencies', label: 'Ticket', icon: IconLink },
   { tab: 'roadmap', label: 'Roadmap', icon: IconMap },
   { tab: 'team', label: 'Team & 1:1', icon: IconUsers },
   { tab: 'decisions', label: 'Decisioni & Azioni', icon: IconFile },
@@ -143,7 +143,7 @@ export function CommandPalette({
       list.push({
         id: 'new-inbox',
         group: 'Crea',
-        label: `Aggiungi in Inbox: «${q}»`,
+        label: `Aggiungi alle attività in ingresso: «${q}»`,
         icon: IconInbox,
         run: () => {
           update((d) =>
@@ -151,6 +151,7 @@ export function CommandPalette({
               id: uid(),
               text: q,
               source: 'idea',
+              stage: 'new',
               createdAt: nowISO(),
             }),
           )

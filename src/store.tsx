@@ -354,20 +354,57 @@ function migrate(d: Partial<AppData>): AppData {
     }))
   }
 
-  // Dependencies get linked to a stream when their free-text party matches one.
-  const dependencies = (d.dependencies ?? []).map((x) =>
-    x.streamId
-      ? x
-      : { ...x, streamId: streamByName.get((x.party ?? '').toLowerCase())?.id },
-  )
+  // Dependencies get linked to a stream when their free-text party matches one,
+  // and default to tickets we opened ('ours').
+  const dependencies = (d.dependencies ?? []).map((x) => ({
+    ...x,
+    streamId:
+      x.streamId ?? streamByName.get((x.party ?? '').toLowerCase())?.id,
+    origin: x.origin ?? ('ours' as const),
+  }))
+
+  // The separate "external backlog" list folds into the ticket register as
+  // origin 'theirs'. Matched by id, so re-running never duplicates.
+  for (const e of d.externalItems ?? []) {
+    if (dependencies.some((x) => x.id === e.id)) continue
+    const stream = streams.find((s) => s.id === e.streamId)
+    dependencies.push({
+      id: e.id,
+      title: e.title,
+      party: stream?.name ?? '',
+      streamId: e.streamId,
+      type: 'team',
+      ref: e.ref,
+      link: e.link,
+      status:
+        e.status === 'done'
+          ? 'closed'
+          : e.status === 'dropped'
+            ? 'closed'
+            : e.status === 'progress'
+              ? 'waiting'
+              : 'open',
+      criticality: 'med',
+      notes: e.note,
+      origin: 'theirs',
+      lastUpdate: e.lastCheck,
+      createdAt: e.createdAt,
+    })
+  }
+
+  // Incoming activities: queue stage defaults from the legacy triage flag.
+  const inboxStaged: InboxItem[] = inbox.map((i) => ({
+    ...i,
+    stage: i.stage ?? (i.triagedAt ? 'done' : 'new'),
+  }))
 
   return {
     ...base,
     ...d,
     streams,
     syncAgenda,
-    inbox,
-    externalItems: d.externalItems ?? base.externalItems,
+    inbox: inboxStaged,
+    externalItems: [], // absorbed into `dependencies` (origin 'theirs')
     dependencies,
     people: d.people ?? base.people,
     kanban: d.kanban ?? base.kanban,

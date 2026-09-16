@@ -28,7 +28,9 @@ import { PageHeader } from '../components/ui'
 import { GuideButton } from '../components/Guide'
 import { RowMenu, AssigneePicker } from '../components/RowMenu'
 import { StreamPicker } from '../components/Stream'
+import { RaciChip, RaciModal } from '../components/RaciEditor'
 import { sectionForStream } from '../lib/sync'
+import type { Activity, Raci } from '../types'
 import { KANBAN_COLUMNS } from '../types'
 
 export default function DailyView({
@@ -116,6 +118,14 @@ export default function DailyView({
   // --- Activity diary (the day's worklog) ---
   const activities = data.dailyActivities[today] ?? []
   const [actText, setActText] = useState('')
+  const [raciFor, setRaciFor] = useState<Activity | null>(null)
+
+  function setActivityRaci(id: string, raci: Raci) {
+    update((d) => {
+      const a = (d.dailyActivities[today] ?? []).find((x) => x.id === id)
+      if (a) a.raci = raci
+    })
+  }
 
   const plusDaysISO = (n: number) => {
     const d = new Date(today + 'T00:00:00')
@@ -320,7 +330,7 @@ export default function DailyView({
       color: 'var(--color-warning)',
     },
     {
-      label: 'dipendenze a rischio',
+      label: 'ticket a rischio',
       value: data.dependencies.filter(
         (x) =>
           x.status !== 'closed' &&
@@ -329,6 +339,13 @@ export default function DailyView({
             (x.chaseCount ?? 0) >= 3),
       ).length,
       tab: 'dependencies',
+      color: 'var(--color-danger)',
+    },
+    {
+      label: 'urgenti in ingresso',
+      value: data.inbox.filter((i) => i.urgent && (i.stage ?? 'new') !== 'done')
+        .length,
+      tab: 'inbox',
       color: 'var(--color-danger)',
     },
     {
@@ -356,13 +373,14 @@ export default function DailyView({
       color: 'var(--color-primary)',
     },
     {
-      label: 'backlog da ricontrollare',
-      value: data.externalItems.filter(
+      label: 'ticket fermi',
+      value: data.dependencies.filter(
         (x) =>
-          x.status !== 'done' && x.status !== 'dropped' && ageInDays(x.lastCheck) >= 7,
+          (x.status === 'open' || x.status === 'waiting') &&
+          ageInDays(x.lastUpdate) >= 5,
       ).length,
       tab: 'dependencies',
-      color: 'var(--color-muted)',
+      color: 'var(--color-warning)',
     },
   ]
   const allClear = overview.every((o) => o.value === 0)
@@ -653,6 +671,7 @@ export default function DailyView({
                       }
                       compact
                     />
+                    <RaciChip raci={a.raci} onClick={() => setRaciFor(a)} />
                     <AssigneePicker
                       owner={a.owner}
                       people={data.people}
@@ -679,6 +698,7 @@ export default function DailyView({
                           label: '→ Sposta a domani',
                           onClick: () => moveActivityToTomorrow(a),
                         },
+                        { label: 'Definisci RACI', onClick: () => setRaciFor(a) },
                         {
                           label: 'Elimina',
                           onClick: () => removeActivity(a.id),
@@ -834,6 +854,19 @@ export default function DailyView({
           </Card>
         </div>
       </div>
+
+      <RaciModal
+        open={raciFor !== null}
+        onClose={() => setRaciFor(null)}
+        title={raciFor?.text ?? ''}
+        raci={raciFor?.raci}
+        people={data.people}
+        onChange={(r) => {
+          if (!raciFor) return
+          setActivityRaci(raciFor.id, r)
+          setRaciFor({ ...raciFor, raci: r })
+        }}
+      />
 
       {data.people.length === 0 &&
         data.kanban.length === 0 &&

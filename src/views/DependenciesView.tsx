@@ -5,11 +5,8 @@ import {
   type DependencyType,
   type DependencyStatus,
   type Criticality,
-  type ExternalItem,
-  type ExternalItemStatus,
   DEP_TYPES,
   DEP_STATUSES,
-  EXTERNAL_STATUSES,
 } from '../types'
 import {
   Button,
@@ -30,9 +27,8 @@ import {
   IconExternal,
   IconWarn,
   IconX,
-  IconCheck,
 } from '../components/icons'
-import { StreamPicker, StreamDot } from '../components/Stream'
+import { StreamDot } from '../components/Stream'
 import {
   uid,
   nowISO,
@@ -49,9 +45,15 @@ const CRIT_META: Record<Criticality, { label: string; color: any; weight: number
   med: { label: 'Media', color: 'warning', weight: 1 },
   low: { label: 'Bassa', color: 'neutral', weight: 2 },
 }
+const STATUS_COLOR: Record<DependencyStatus, string> = {
+  open: 'var(--color-warning)',
+  waiting: 'var(--color-muted)',
+  chased: 'var(--color-primary)',
+  unblocked: 'var(--color-success)',
+  closed: 'var(--color-border)',
+}
 const STALE_DAYS = 5
 const ESCALATE_AFTER = 3
-const RECHECK_DAYS = 7 // external backlog items not checked for this long
 
 const emptyDraft = (streamId?: string): Partial<Dependency> => ({
   title: '',
@@ -66,6 +68,7 @@ const emptyDraft = (streamId?: string): Partial<Dependency> => ({
   blocks: '',
   criticality: 'med',
   notes: '',
+  origin: 'ours',
 })
 
 export default function DependenciesView() {
@@ -74,18 +77,35 @@ export default function DependenciesView() {
   const [editId, setEditId] = useState<string | null>(null)
   const [fText, setFText] = useState('')
   const [fStream, setFStream] = useState('')
+  const [fOrigin, setFOrigin] = useState<'all' | 'ours' | 'theirs'>('all')
   const [openOnly, setOpenOnly] = useState(true)
-  const [extText, setExtText] = useState('')
+  const [quick, setQuick] = useState('')
 
-  const deps = data.dependencies
+  const tickets = data.dependencies
   const streamOf = (id?: string) => data.streams.find((s) => s.id === id)
+  const originOf = (x: Dependency) => x.origin ?? 'ours'
 
-  /* ----------------------------- dependencies ---------------------------- */
+  const isOpen = (x: Dependency) => x.status !== 'closed'
+  const isStale = (x: Dependency) =>
+    (x.status === 'open' || x.status === 'waiting') &&
+    ageInDays(x.lastUpdate) >= STALE_DAYS
+  const isOverdue = (x: Dependency) => {
+    const dd = daysFromToday(x.neededBy)
+    return x.status !== 'closed' && dd !== null && dd < 0
+  }
+  const needsEscalation = (x: Dependency) =>
+    (x.chaseCount ?? 0) >= ESCALATE_AFTER &&
+    x.status !== 'closed' &&
+    x.status !== 'unblocked'
+
+  /* ------------------------------- mutations ------------------------------ */
   function save() {
     if (!draft?.title?.trim()) return
     update((d) => {
       const party =
-        draft.party?.trim() || d.streams.find((s) => s.id === draft.streamId)?.name || ''
+        draft.party?.trim() ||
+        d.streams.find((s) => s.id === draft.streamId)?.name ||
+        ''
       if (editId) {
         const x = d.dependencies.find((y) => y.id === editId)
         if (x) {
@@ -114,6 +134,7 @@ export default function DependenciesView() {
           blocks: draft.blocks?.trim() || undefined,
           criticality: (draft.criticality as Criticality) ?? 'med',
           notes: draft.notes?.trim() || undefined,
+          origin: (draft.origin as 'ours' | 'theirs') ?? 'ours',
           lastUpdate: nowISO(),
           createdAt: nowISO(),
         })
@@ -123,12 +144,27 @@ export default function DependenciesView() {
     setEditId(null)
   }
 
-  function remove(id: string) {
+  function quickAdd() {
+    const t = quick.trim()
+    if (!t) return
+    // "REF titolo" → ref staccato se il primo token sembra un codice ticket
+    const m = t.match(/^([A-Z][A-Z0-9]*-?\d+)\s+(.*)$/)
     update((d) => {
-      d.dependencies = d.dependencies.filter((x) => x.id !== id)
+      d.dependencies.unshift({
+        id: uid(),
+        title: m ? m[2] : t,
+        ref: m ? m[1] : undefined,
+        party: streamOf(fStream)?.name ?? '',
+        streamId: fStream || undefined,
+        type: 'ticket',
+        status: 'open',
+        criticality: 'med',
+        origin: fOrigin === 'theirs' ? 'theirs' : 'ours',
+        lastUpdate: nowISO(),
+        createdAt: nowISO(),
+      })
     })
-    setDraft(null)
-    setEditId(null)
+    setQuick('')
   }
 
   function patchDep(id: string, patch: Partial<Dependency>) {
@@ -137,11 +173,13 @@ export default function DependenciesView() {
       if (x) Object.assign(x, patch)
     })
   }
-
-  function setStatus(id: string, status: DependencyStatus) {
-    patchDep(id, { status, lastUpdate: nowISO() })
+  function remove(id: string) {
+    update((d) => {
+      d.dependencies = d.dependencies.filter((x) => x.id !== id)
+    })
+    setDraft(null)
+    setEditId(null)
   }
-
   function chase(id: string) {
     update((d) => {
       const x = d.dependencies.find((y) => y.id === id)
@@ -153,129 +191,64 @@ export default function DependenciesView() {
     })
   }
 
-  const isOpen = (x: Dependency) => x.status !== 'closed'
-  const isStale = (x: Dependency) =>
-    (x.status === 'open' || x.status === 'waiting') && ageInDays(x.lastUpdate) >= STALE_DAYS
-  const isOverdue = (x: Dependency) => {
-    const dd = daysFromToday(x.neededBy)
-    return x.status !== 'closed' && dd !== null && dd < 0
-  }
-  const needsEscalation = (x: Dependency) =>
-    (x.chaseCount ?? 0) >= ESCALATE_AFTER &&
-    x.status !== 'closed' &&
-    x.status !== 'unblocked'
-
-  /* ---------------------------- external items --------------------------- */
-  function addExternal() {
-    const t = extText.trim()
-    if (!t || !fStream) return
-    update((d) => {
-      d.externalItems.unshift({
-        id: uid(),
-        streamId: fStream,
-        title: t,
-        status: 'watching',
-        lastCheck: nowISO(),
-        createdAt: nowISO(),
-      })
-    })
-    setExtText('')
-  }
-  function patchExt(id: string, patch: Partial<ExternalItem>) {
-    update((d) => {
-      const x = d.externalItems.find((y) => y.id === id)
-      if (x) Object.assign(x, patch)
-    })
-  }
-  function removeExt(id: string) {
-    update((d) => {
-      d.externalItems = d.externalItems.filter((x) => x.id !== id)
-    })
-  }
-  const needsRecheck = (x: ExternalItem) =>
-    x.status !== 'done' && x.status !== 'dropped' && ageInDays(x.lastCheck) >= RECHECK_DAYS
-
   /* --------------------- per-counterpart status summary ------------------- */
   type Health = 'critical' | 'attention' | 'ok' | 'idle'
   const HEALTH: Record<Health, { color: string; label: string }> = {
     critical: { color: 'var(--color-danger)', label: 'Da escalare' },
     attention: { color: 'var(--color-warning)', label: 'Da sollecitare' },
     ok: { color: 'var(--color-success)', label: 'Sotto controllo' },
-    idle: { color: 'var(--color-border)', label: 'Niente in corso' },
+    idle: { color: 'var(--color-border)', label: 'Nessun ticket' },
   }
 
   const summaries = data.streams.map((s) => {
-    const sDeps = deps.filter((x) => x.streamId === s.id)
-    const sExt = data.externalItems.filter((x) => x.streamId === s.id)
-    const open = sDeps.filter(isOpen).length
-    const overdue = sDeps.filter(isOverdue).length
-    const escalate = sDeps.filter(needsEscalation).length
-    const stale = sDeps.filter(isStale).length
-    const recheck = sExt.filter(needsRecheck).length
-    const watching = sExt.filter(
-      (x) => x.status !== 'done' && x.status !== 'dropped',
-    ).length
-    const openActions = data.actions.filter(
-      (a) => a.streamId === s.id && a.status !== 'done',
-    ).length
-    const lastTouch = [
-      ...sDeps.map((x) => x.lastUpdate),
-      ...sExt.map((x) => x.lastCheck),
-    ].sort().pop()
+    const mine = tickets.filter((x) => x.streamId === s.id)
+    const open = mine.filter(isOpen)
+    const overdue = open.filter(isOverdue).length
+    const escalate = open.filter(needsEscalation).length
+    const stale = open.filter(isStale).length
+    const ours = open.filter((x) => originOf(x) === 'ours').length
+    const theirs = open.filter((x) => originOf(x) === 'theirs').length
+    const lastTouch = mine.map((x) => x.lastUpdate).sort().pop()
     const health: Health =
       overdue > 0 || escalate > 0
         ? 'critical'
-        : stale > 0 || recheck > 0
+        : stale > 0
           ? 'attention'
-          : open > 0 || watching > 0 || openActions > 0
+          : open.length > 0
             ? 'ok'
             : 'idle'
-    return {
-      stream: s,
-      open,
-      overdue,
-      escalate,
-      stale,
-      recheck,
-      watching,
-      openActions,
-      lastTouch,
-      health,
-    }
+    return { stream: s, open: open.length, overdue, escalate, stale, ours, theirs, lastTouch, health }
   })
 
-  const matches = (x: Dependency) => {
-    if (openOnly && x.status === 'closed') return false
-    if (fStream && x.streamId !== fStream) return false
-    if (
-      fText &&
-      !`${x.title} ${x.party} ${x.ref ?? ''} ${x.blocks ?? ''}`
-        .toLowerCase()
-        .includes(fText.toLowerCase())
-    )
-      return false
-    return true
-  }
-
-  const visible = deps.filter(matches).sort((a, b) => {
-    if (isOpen(a) !== isOpen(b)) return isOpen(a) ? -1 : 1
-    if (CRIT_META[a.criticality].weight !== CRIT_META[b.criticality].weight)
-      return CRIT_META[a.criticality].weight - CRIT_META[b.criticality].weight
-    return (daysFromToday(a.neededBy) ?? 9999) - (daysFromToday(b.neededBy) ?? 9999)
-  })
-
-  const extVisible = data.externalItems.filter(
-    (x) => (!fStream || x.streamId === fStream) && (!openOnly || x.status !== 'done'),
-  )
-  const streamActions = fStream
-    ? data.actions.filter((a) => a.streamId === fStream && a.status !== 'done')
-    : []
+  const visible = tickets
+    .filter((x) => {
+      if (openOnly && !isOpen(x)) return false
+      if (fStream && x.streamId !== fStream) return false
+      if (fOrigin !== 'all' && originOf(x) !== fOrigin) return false
+      if (
+        fText &&
+        !`${x.title} ${x.party} ${x.ref ?? ''} ${x.blocks ?? ''}`
+          .toLowerCase()
+          .includes(fText.toLowerCase())
+      )
+        return false
+      return true
+    })
+    .sort((a, b) => {
+      if (isOpen(a) !== isOpen(b)) return isOpen(a) ? -1 : 1
+      const ua = isOverdue(a) || needsEscalation(a) ? 0 : isStale(a) ? 1 : 2
+      const ub = isOverdue(b) || needsEscalation(b) ? 0 : isStale(b) ? 1 : 2
+      if (ua !== ub) return ua - ub
+      if (CRIT_META[a.criticality].weight !== CRIT_META[b.criticality].weight)
+        return CRIT_META[a.criticality].weight - CRIT_META[b.criticality].weight
+      return (daysFromToday(a.neededBy) ?? 9999) - (daysFromToday(b.neededBy) ?? 9999)
+    })
 
   return (
     <div>
       <PageHeader
-        title="Interlocutori"
-        subtitle="Cosa hai aperto con CCoE, RunOps e gli altri team: dipendenze, item del loro backlog che monitori, action verso di loro."
+        title="Ticket"
+        subtitle="I ticket che apri verso i team esterni (CCoE, RunOps…) e quelli che segui da loro: sempre sotto controllo."
         actions={
           <>
             <GuideButton section="dependencies" />
@@ -286,13 +259,13 @@ export default function DependenciesView() {
                 setDraft(emptyDraft(fStream || undefined))
               }}
             >
-              <IconPlus /> Nuova dipendenza
+              <IconPlus /> Nuovo ticket
             </Button>
           </>
         }
       />
 
-      {/* Counterpart status cards — lo stato a colpo d'occhio */}
+      {/* Stato per interlocutore */}
       <div className="mb-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         {summaries.map((s) => {
           const active = fStream === s.stream.id
@@ -319,31 +292,23 @@ export default function DependenciesView() {
                   {meta.label}
                 </span>
               </div>
-
               <div className="mt-2 flex items-baseline gap-3">
                 <span className="text-2xl font-semibold tabular-nums">{s.open}</span>
                 <span className="text-[11px] text-[var(--color-muted)]">
-                  dipendenze aperte
+                  ticket aperti
                 </span>
               </div>
-
               <div className="mt-1.5 flex flex-wrap gap-1">
-                {s.overdue > 0 && <Badge color="danger">{s.overdue} scadute</Badge>}
+                {s.overdue > 0 && <Badge color="danger">{s.overdue} scaduti</Badge>}
                 {s.escalate > 0 && <Badge color="danger">{s.escalate} da escalare</Badge>}
                 {s.stale > 0 && <Badge color="warning">{s.stale} da sollecitare</Badge>}
-                {s.recheck > 0 && (
-                  <Badge color="warning">{s.recheck} da ricontrollare</Badge>
-                )}
-                {s.watching > 0 && <Badge color="neutral">{s.watching} in backlog</Badge>}
-                {s.openActions > 0 && (
-                  <Badge color="primary">{s.openActions} action</Badge>
-                )}
+                {s.ours > 0 && <Badge color="primary">{s.ours} nostri</Badge>}
+                {s.theirs > 0 && <Badge color="neutral">{s.theirs} loro</Badge>}
               </div>
-
               <p className="mt-2 text-[11px] text-[var(--color-muted)]">
                 {s.lastTouch
-                  ? `ultimo contatto ${relativeDays(s.lastTouch.slice(0, 10))}`
-                  : 'nessun contatto registrato'}
+                  ? `ultimo aggiornamento ${relativeDays(s.lastTouch.slice(0, 10))}`
+                  : 'nessun ticket registrato'}
               </p>
             </button>
           )
@@ -351,7 +316,7 @@ export default function DependenciesView() {
       </div>
 
       {/* Toolbar */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         {fStream ? (
           <span className="inline-flex items-center gap-1.5 text-sm font-medium">
             <StreamDot stream={streamOf(fStream)} />
@@ -369,92 +334,105 @@ export default function DependenciesView() {
             Tutti gli interlocutori
           </span>
         )}
+        <Select
+          value={fOrigin}
+          onChange={(e) => setFOrigin(e.target.value as any)}
+          className="h-8"
+        >
+          <option value="all">Tutti i ticket</option>
+          <option value="ours">Aperti da noi</option>
+          <option value="theirs">Dal loro backlog</option>
+        </Select>
         <div className="ml-auto flex items-center gap-2">
           <Input
             value={fText}
             onChange={(e) => setFText(e.target.value)}
-            placeholder="Filtra…"
-            className="h-8 w-36"
+            placeholder="Cerca (titolo, rif.)…"
+            className="h-8 w-44"
           />
           <Button
             size="sm"
             variant={openOnly ? 'primary' : 'outline'}
             onClick={() => setOpenOnly((v) => !v)}
           >
-            Solo aperte
+            Solo aperti
           </Button>
         </div>
       </div>
 
-      {/* Dependencies */}
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
-        Dipendenze
-      </h3>
+      {/* Aggiunta rapida */}
+      <div className="mb-4 flex gap-2">
+        <Input
+          value={quick}
+          onChange={(e) => setQuick(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && quickAdd()}
+          placeholder={
+            fStream
+              ? `Nuovo ticket per ${streamOf(fStream)?.name}… (es. "INC0012345 apertura firewall")`
+              : 'Nuovo ticket… (seleziona prima un interlocutore per assegnarlo)'
+          }
+        />
+        <Button variant="primary" onClick={quickAdd}>
+          <IconPlus width={15} height={15} />
+        </Button>
+      </div>
+
       {visible.length === 0 ? (
         <EmptyState
           icon={<IconLink width={26} height={26} />}
-          title="Nessuna dipendenza"
-          hint="Registra qui i ticket e i blocchi che dipendono da altri team: owner che li insegue, data «needed by», e li tieni visibili."
+          title="Nessun ticket"
+          hint="Registra qui i ticket che apri verso CCoE, RunOps e gli altri team: riferimento, link, scadenza e owner che li segue. Con «Sollecita» tieni traccia dei follow-up."
         />
       ) : (
         <div className="space-y-2">
           {visible.map((x) => {
             const stale = isStale(x)
             const overdue = isOverdue(x)
+            const escalate = needsEscalation(x)
             const age = ageInDays(x.lastUpdate)
+            const stream = streamOf(x.streamId)
             return (
-              <Card key={x.id} className="p-3">
+              <Card
+                key={x.id}
+                className={cn('p-3', (overdue || escalate) && 'border-[var(--color-danger)]')}
+              >
                 <div className="flex flex-wrap items-center gap-2">
                   <span
                     className="h-6 w-1 shrink-0 rounded-full"
-                    style={{
-                      background:
-                        x.criticality === 'high'
-                          ? 'var(--color-danger)'
-                          : x.criticality === 'med'
-                            ? 'var(--color-warning)'
-                            : 'var(--color-border)',
-                    }}
+                    style={{ background: STATUS_COLOR[x.status] }}
                   />
+                  {x.ref && (
+                    <span className="shrink-0 rounded bg-[var(--color-surface-2)] px-1.5 py-0.5 font-mono text-[11px]">
+                      {x.ref}
+                    </span>
+                  )}
                   <button
                     onClick={() => {
                       setEditId(x.id)
                       setDraft({ ...x })
                     }}
-                    className="min-w-0 flex-1 text-left"
+                    className="min-w-[160px] flex-1 truncate text-left text-sm font-medium"
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium">{x.title}</span>
-                      {x.ref && (
-                        <span className="shrink-0 text-xs text-[var(--color-muted)]">
-                          #{x.ref}
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                      <Badge color="neutral">
-                        {DEP_TYPES.find((t) => t.key === x.type)?.label}
-                      </Badge>
-                      <Badge color={CRIT_META[x.criticality].color}>
-                        {CRIT_META[x.criticality].label}
-                      </Badge>
-                      {x.owner && (
-                        <span className="text-xs text-[var(--color-muted)]">· {x.owner}</span>
-                      )}
-                    </div>
+                    {x.title}
                   </button>
 
-                  <StreamPicker
-                    streamId={x.streamId}
-                    streams={data.streams}
-                    onPick={(id) =>
-                      patchDep(x.id, {
-                        streamId: id,
-                        party: streamOf(id)?.name ?? x.party,
-                      })
-                    }
-                    compact
-                  />
+                  {stream && (
+                    <span
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
+                      style={{
+                        background: `color-mix(in oklch, ${stream.color} 16%, transparent)`,
+                        color: stream.color,
+                      }}
+                    >
+                      {stream.name}
+                    </span>
+                  )}
+                  <Badge color={originOf(x) === 'ours' ? 'primary' : 'neutral'}>
+                    {originOf(x) === 'ours' ? 'nostro' : 'loro'}
+                  </Badge>
+                  <Badge color={CRIT_META[x.criticality].color}>
+                    {CRIT_META[x.criticality].label}
+                  </Badge>
 
                   {x.link && /^https?:\/\//.test(x.link) && (
                     <a
@@ -462,7 +440,7 @@ export default function DependenciesView() {
                       target="_blank"
                       rel="noopener noreferrer"
                       title="Apri il ticket"
-                      className="grid h-8 w-8 place-items-center rounded-md text-[var(--color-muted)] hover:bg-[var(--color-surface-2)]"
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-[var(--color-muted)] hover:bg-[var(--color-surface-2)]"
                     >
                       <IconExternal width={15} height={15} />
                     </a>
@@ -473,15 +451,20 @@ export default function DependenciesView() {
                       <IconWarn width={11} height={11} /> {relativeDays(x.neededBy)}
                     </Badge>
                   )}
-                  {stale && <Badge color="warning">ferma da {age}g</Badge>}
+                  {stale && <Badge color="warning">fermo da {age}g</Badge>}
                   {(x.chaseCount ?? 0) > 0 && (
                     <Badge color="neutral">×{x.chaseCount} solleciti</Badge>
                   )}
-                  {needsEscalation(x) && <Badge color="danger">da escalare</Badge>}
+                  {escalate && <Badge color="danger">da escalare</Badge>}
 
                   <Select
                     value={x.status}
-                    onChange={(e) => setStatus(x.id, e.target.value as DependencyStatus)}
+                    onChange={(e) =>
+                      patchDep(x.id, {
+                        status: e.target.value as DependencyStatus,
+                        lastUpdate: nowISO(),
+                      })
+                    }
                     className="h-8"
                   >
                     {DEP_STATUSES.map((s) => (
@@ -490,10 +473,10 @@ export default function DependenciesView() {
                       </option>
                     ))}
                   </Select>
-                  {x.status !== 'closed' && x.status !== 'unblocked' && (
+                  {isOpen(x) && x.status !== 'unblocked' && (
                     <Button
                       size="sm"
-                      variant={stale ? 'primary' : 'outline'}
+                      variant={stale || escalate ? 'primary' : 'outline'}
                       onClick={() => chase(x.id)}
                       title="Registra un sollecito"
                     >
@@ -501,9 +484,11 @@ export default function DependenciesView() {
                     </Button>
                   )}
                 </div>
-                {x.blocks && (
-                  <p className="mt-2 pl-3 text-xs text-[var(--color-muted)]">
-                    <span className="font-medium">Blocca:</span> {x.blocks}
+                {(x.blocks || x.owner) && (
+                  <p className="mt-1.5 pl-3 text-xs text-[var(--color-muted)]">
+                    {x.owner && <>Segue: {x.owner}</>}
+                    {x.owner && x.blocks && ' · '}
+                    {x.blocks && <>Blocca: {x.blocks}</>}
                   </p>
                 )}
               </Card>
@@ -512,148 +497,11 @@ export default function DependenciesView() {
         </div>
       )}
 
-      {/* External backlog */}
-      <div className="mt-6">
-        <div className="mb-2 flex items-center gap-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
-            Backlog monitorato
-          </h3>
-          <span className="text-[11px] text-[var(--color-muted)]">
-            item del backlog altrui che segui ma non gestisci
-          </span>
-        </div>
-
-        {fStream ? (
-          <div className="mb-2 flex gap-2">
-            <Input
-              value={extText}
-              onChange={(e) => setExtText(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && addExternal()}
-              placeholder={`Aggiungi un item del backlog di ${streamOf(fStream)?.name}…`}
-            />
-            <Button variant="primary" onClick={addExternal}>
-              <IconPlus width={15} height={15} />
-            </Button>
-          </div>
-        ) : (
-          <p className="mb-2 text-xs text-[var(--color-muted)]">
-            Seleziona un interlocutore qui sopra per aggiungere item al suo backlog.
-          </p>
-        )}
-
-        {extVisible.length === 0 ? (
-          <p className="rounded-[var(--radius)] border border-dashed px-4 py-5 text-center text-xs text-[var(--color-muted)]">
-            Nessun item monitorato{fStream ? ` per ${streamOf(fStream)?.name}` : ''}.
-          </p>
-        ) : (
-          <div className="space-y-1.5">
-            {extVisible.map((x) => {
-              const stream = streamOf(x.streamId)
-              const recheck = needsRecheck(x)
-              return (
-                <div
-                  key={x.id}
-                  className="group flex flex-wrap items-center gap-2 rounded-[calc(var(--radius)-0.25rem)] border bg-[var(--color-surface)] px-3 py-2"
-                >
-                  <StreamDot stream={stream} />
-                  <input
-                    value={x.title}
-                    onChange={(e) => patchExt(x.id, { title: e.target.value })}
-                    className={cn(
-                      'min-w-[160px] flex-1 bg-transparent text-sm outline-none',
-                      x.status === 'done' && 'text-[var(--color-muted)] line-through',
-                    )}
-                  />
-                  <input
-                    value={x.ref ?? ''}
-                    onChange={(e) => patchExt(x.id, { ref: e.target.value })}
-                    placeholder="rif."
-                    className="h-7 w-24 rounded border bg-transparent px-2 text-xs outline-none focus:border-[var(--color-primary)]"
-                  />
-                  <input
-                    value={x.link ?? ''}
-                    onChange={(e) => patchExt(x.id, { link: e.target.value })}
-                    placeholder="link"
-                    className="h-7 w-28 rounded border bg-transparent px-2 text-xs outline-none focus:border-[var(--color-primary)]"
-                  />
-                  {x.link && /^https?:\/\//.test(x.link) && (
-                    <a
-                      href={x.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[var(--color-muted)] hover:text-[var(--color-primary)]"
-                    >
-                      <IconExternal width={14} height={14} />
-                    </a>
-                  )}
-                  {recheck && (
-                    <Badge color="warning">
-                      da ricontrollare ({ageInDays(x.lastCheck)}g)
-                    </Badge>
-                  )}
-                  <Select
-                    value={x.status}
-                    onChange={(e) =>
-                      patchExt(x.id, {
-                        status: e.target.value as ExternalItemStatus,
-                        lastCheck: nowISO(),
-                      })
-                    }
-                    className="h-7 text-xs"
-                  >
-                    {EXTERNAL_STATUSES.map((s) => (
-                      <option key={s.key} value={s.key}>
-                        {s.label}
-                      </option>
-                    ))}
-                  </Select>
-                  <Button
-                    size="sm"
-                    variant={recheck ? 'primary' : 'ghost'}
-                    onClick={() => patchExt(x.id, { lastCheck: nowISO() })}
-                    title={`Ultimo check: ${fmtDate(x.lastCheck.slice(0, 10))}`}
-                  >
-                    <IconCheck width={13} height={13} /> Controllato
-                  </Button>
-                  <button
-                    onClick={() => removeExt(x.id)}
-                    className="text-[var(--color-muted)] opacity-0 transition-opacity hover:text-[var(--color-danger)] group-hover:opacity-100"
-                  >
-                    <IconTrash width={14} height={14} />
-                  </button>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Actions toward the selected counterpart */}
-      {fStream && streamActions.length > 0 && (
-        <div className="mt-6">
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
-            Action verso {streamOf(fStream)?.name}
-          </h3>
-          <div className="space-y-1.5">
-            {streamActions.map((a) => (
-              <div
-                key={a.id}
-                className="flex items-center gap-2 rounded-[calc(var(--radius)-0.25rem)] border px-3 py-2 text-sm"
-              >
-                <span className="flex-1 truncate">{a.title}</span>
-                {a.owner && <Badge color="primary">{a.owner}</Badge>}
-                {a.due && <Badge color="neutral">{relativeDays(a.due)}</Badge>}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Edit modal */}
       <Modal
         open={draft !== null}
         onClose={() => setDraft(null)}
-        title={editId ? 'Dipendenza' : 'Nuova dipendenza'}
+        title={editId ? 'Ticket' : 'Nuovo ticket'}
         wide
         footer={
           <>
@@ -671,7 +519,7 @@ export default function DependenciesView() {
       >
         {draft && (
           <div className="space-y-3">
-            <Field label="Cosa serve">
+            <Field label="Cosa serve / oggetto del ticket">
               <Input
                 autoFocus
                 value={draft.title ?? ''}
@@ -679,8 +527,8 @@ export default function DependenciesView() {
                 placeholder="Es. Apertura firewall verso il nuovo servizio"
               />
             </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Interlocutore (stream)">
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Interlocutore">
                 <Select
                   value={draft.streamId ?? ''}
                   onChange={(e) =>
@@ -694,6 +542,18 @@ export default function DependenciesView() {
                       {s.name}
                     </option>
                   ))}
+                </Select>
+              </Field>
+              <Field label="Origine">
+                <Select
+                  value={draft.origin ?? 'ours'}
+                  onChange={(e) =>
+                    setDraft({ ...draft, origin: e.target.value as 'ours' | 'theirs' })
+                  }
+                  className="w-full"
+                >
+                  <option value="ours">Aperto da noi</option>
+                  <option value="theirs">Dal loro backlog</option>
                 </Select>
               </Field>
               <Field label="Tipo">
@@ -766,7 +626,7 @@ export default function DependenciesView() {
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Owner (chi la segue)">
+              <Field label="Chi lo segue">
                 <Input
                   value={draft.owner ?? ''}
                   onChange={(e) => setDraft({ ...draft, owner: e.target.value })}

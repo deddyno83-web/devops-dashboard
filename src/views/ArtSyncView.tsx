@@ -140,11 +140,6 @@ export default function ArtSyncView() {
           .map((a) => `${a.title}${a.owner ? ` → ${a.owner}` : ''}`),
       )
       out.push(
-        ...data.externalItems
-          .filter((x) => x.streamId === sec.streamId && x.status !== 'done' && x.status !== 'dropped')
-          .map((x) => `${x.ref ? `[${x.ref}] ` : ''}${x.title}`),
-      )
-      out.push(
         ...data.dependencies
           .filter(
             (x) =>
@@ -152,7 +147,12 @@ export default function ArtSyncView() {
               x.status !== 'closed' &&
               x.status !== 'unblocked',
           )
-          .map((x) => `${x.title} (dipendenza)`),
+          .map(
+            (x) =>
+              `${x.ref ? `[${x.ref}] ` : ''}${x.title}${
+                (x.origin ?? 'ours') === 'ours' ? ' (ticket)' : ' (loro backlog)'
+              }`,
+          ),
       )
     } else if (sec.kind === 'dependencies') {
       out = data.dependencies

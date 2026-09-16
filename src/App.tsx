@@ -50,17 +50,18 @@ type Tab =
 
 const NAV: { key: Tab; label: string; icon: typeof IconHome }[] = [
   { key: 'daily', label: 'Oggi', icon: IconHome },
-  { key: 'inbox', label: 'Inbox', icon: IconInbox },
+  { key: 'inbox', label: 'Attività in ingresso', icon: IconInbox },
   { key: 'artsync', label: 'ART Sync', icon: IconTrain },
   { key: 'kanban', label: 'Kanban', icon: IconBoard },
-  { key: 'dependencies', label: 'Interlocutori', icon: IconLink },
+  { key: 'dependencies', label: 'Ticket', icon: IconLink },
   // Standup disattivata: assorbita dall'ART Sync (riattivabile qui)
   // { key: 'standup', label: 'Standup', icon: IconSun },
   { key: 'roadmap', label: 'Roadmap', icon: IconMap },
   { key: 'team', label: 'Team & 1:1', icon: IconUsers },
+  // Decisioni disattivata su richiesta (riattivabile qui)
+  // { key: 'decisions', label: 'Decisioni', icon: IconFile },
   // Sprint & Salute disabilitata per ora (riattivabile aggiungendo questa voce):
   // { key: 'sprint', label: 'Sprint & Salute', icon: IconActivity },
-  { key: 'decisions', label: 'Decisioni', icon: IconFile },
   { key: 'report', label: 'Report', icon: IconPrint },
 ]
 

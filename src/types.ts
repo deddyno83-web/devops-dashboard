@@ -170,6 +170,8 @@ export interface Dependency {
   criticality: Criticality
   notes?: string
   streamId?: ID // counterpart this dependency belongs to
+  /** 'ours' = ticket we opened to them · 'theirs' = item of their backlog we watch */
+  origin?: 'ours' | 'theirs'
   chaseCount?: number // "Sollecita" clicks — at 3+ the app flags "da escalare"
   lastUpdate: string // ISO datetime — drives aging
   createdAt: string
@@ -202,6 +204,7 @@ export interface Activity {
   owner?: string // assigned team member (for monitoring / delegation)
   streamId?: ID
   source?: 'art-sync' | 'inbox' // where the activity came from
+  raci?: Raci
   createdAt: string
   carryCount?: number // times carried over from previous days
   actionId?: ID // linked ActionItem — completing the activity completes the action
@@ -380,17 +383,54 @@ export const INBOX_SOURCES: { key: InboxSource; label: string }[] = [
   { key: 'idea', label: 'Idea' },
 ]
 
-/** Everything that arrives lands here first, then gets triaged. */
+/* --------------------------------- RACI ----------------------------------- *
+ * Responsible (esegue) · Accountable (unico responsabile finale) ·
+ * Consulted (da consultare) · Informed (da tenere informato).                 */
+export interface Raci {
+  responsible?: string[]
+  accountable?: string
+  consulted?: string[]
+  informed?: string[]
+}
+
+export function raciIsEmpty(r?: Raci): boolean {
+  if (!r) return true
+  return (
+    !r.accountable &&
+    !(r.responsible ?? []).length &&
+    !(r.consulted ?? []).length &&
+    !(r.informed ?? []).length
+  )
+}
+
+/** Queue an incoming activity walks through. */
+export type InboxStage = 'new' | 'seen' | 'progress' | 'done'
+
+export const INBOX_STAGES: {
+  key: InboxStage
+  label: string
+  color: any
+}[] = [
+  { key: 'new', label: 'Nuove', color: 'danger' },
+  { key: 'seen', label: 'Viste', color: 'warning' },
+  { key: 'progress', label: 'In corso', color: 'primary' },
+  { key: 'done', label: 'Chiuse', color: 'success' },
+]
+
+/** Everything that arrives lands here first, then walks the queue. */
 export interface InboxItem {
   id: ID
   text: string
   note?: string
   source: InboxSource
   streamId?: ID
-  /** Assigned while still in the inbox: stays visible so it can be monitored. */
+  /** Assigned while still in the queue: stays visible so it can be monitored. */
   owner?: string
+  stage?: InboxStage // undefined = 'new' (legacy items)
+  urgent?: boolean
+  raci?: Raci
   createdAt: string
-  triagedAt?: string // undefined = still to triage
+  triagedAt?: string // set when it leaves the queue / is closed
   outcome?: string // what it became, e.g. "Card Kanban"
 }
 
